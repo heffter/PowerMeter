@@ -1,0 +1,7 @@
+
+# NI-VISA provides support for customers using Ethernet, GPIB, serial, USB, and other types of instruments.
+https://www.ni.com/en/support/downloads/drivers/download.ni-visa.html#569200
+
+# Python dependencies
+pip install matplotlib
+pip install pyvisa
