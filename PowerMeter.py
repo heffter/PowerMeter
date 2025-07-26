@@ -122,10 +122,11 @@ class PowerMonitor:
         # Bottom status bar for connection status
         self.statusbar = ttk.Frame(self.root)
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.connection_var = tk.StringVar(value="Connection Status: [Simulation mode]")
-        self.connection_status_label = ttk.Label(self.statusbar, textvariable=self.connection_var, font=('Helvetica', 10, 'bold'), foreground='black')
-        self.connection_status_label.pack(side=tk.RIGHT, padx=(0, 10))
-
+        # Place connection_status_label to the left of connection_status, both at bottom right
+        self.connection_status = ttk.Label(self.statusbar, font=('Helvetica', 10, 'bold'))
+        self.connection_status.pack(side=tk.RIGHT, padx=(0, 10))
+        self.connection_status_label = ttk.Label(self.statusbar, text="Connection Status:", font=('Helvetica', 10, 'bold'), foreground='black')
+        self.connection_status_label.pack(side=tk.RIGHT, padx=(0, 2))
         self.update_status_display()
 
     def update_acquisition_frequency(self):
@@ -168,11 +169,9 @@ class PowerMonitor:
 
     def update_status_display(self):
         if self.device_connected and not self.simulation_mode:
-            self.connection_var.set("Connection Status: [Connected]")
-            self.connection_status_label.config(foreground='#28a745')
+            self.connection_status.config(text="Connected", foreground='#28a745')
         else:
-            self.connection_var.set("Connection Status: [Simulation mode]")
-            self.connection_status_label.config(foreground='#dc3545')
+            self.connection_status.config(text="Simulation mode", foreground='#dc3545')
 
     def configure_device(self):
         config_window = tk.Toplevel(self.root)
@@ -224,14 +223,13 @@ class PowerMonitor:
             try:
                 resources = self.rm.list_resources()
                 for i, resource in enumerate(resources):
-                    device_listbox.insert(tk.END, f"{i+1}. {resource}")
                     try:
                         instrument = self.rm.open_resource(resource)
                         identity = instrument.query("*IDN?").strip()
-                        device_listbox.insert(tk.END, f"   ID: {identity}")
                         instrument.close()
                     except:
-                        device_listbox.insert(tk.END, f"   ID: Unknown/Error")
+                        identity = "Unknown/Error"
+                    device_listbox.insert(tk.END, f"{resource}  |  ID: {identity}")
             except Exception as e:
                 device_listbox.insert(tk.END, f"Error scanning devices: {str(e)}")
         
@@ -243,7 +241,8 @@ class PowerMonitor:
         ttk.Label(manual_frame, text="Manual Connection String:").pack(anchor=tk.W)
         manual_var = tk.StringVar(value="USB0::0x0957::0x0607::MY12345678::INSTR")
         manual_entry = ttk.Entry(manual_frame, textvariable=manual_var, width=50)
-        manual_entry.pack(fill=tk.X, pady=(0, 5))
+        manual_entry.pack(fill=tk.X, pady=(0, 2))
+        ttk.Label(manual_frame, text="Format: USB0::ManufacturerID::ModelID::Serial::INSTR\nExample: USB0::0x0957::0x0607::MY12345678::INSTR", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
         
         # Connection status
         status_var = tk.StringVar(value="Not Connected")
