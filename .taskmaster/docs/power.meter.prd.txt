@@ -1,0 +1,121 @@
+Product Requirements Document (PRD)
+Product Name: Power Monitor – Keysight N1914A Integration
+
+---
+
+1. Purpose
+
+The Power Monitor is a desktop application designed to display and visualize real-time power measurements from a Keysight N1914A USB power meter. It enables users to monitor power trends, export data, and test the interface even without physical hardware via a simulation mode.
+
+---
+
+2. Scope
+
+The application will:
+- Connect to the N1914A via USB using PyVISA.
+- Continuously fetch and display power readings from a selected channel.
+- Provide real-time graphing and numerical display in a user-friendly GUI.
+- Allow CSV export of historical power data.
+- Include a simulation mode for development/testing without hardware.
+- Support configurable data acquisition frequency (100ms to 10 seconds).
+- Maintain a rolling 60-second time window of data.
+
+---
+
+3. Functional Requirements
+
+3.1 Instrument Connectivity
+- Detect and connect to a Keysight N1914A device via USB.
+- Retrieve the correct VISA address using `pyvisa.ResourceManager().list_resources()`.
+- Support frequency configuration (default: 1 GHz).
+- Use the SCPI command `:FETCh:SCALar:POWer:AC?` to get readings.
+- Support SCPI configuration commands (e.g., averaging count, measurement unit).
+
+3.2 GUI Functionality
+- Display current power reading in a large, readable font (e.g., 28pt).
+- Plot power values over time in a scrollable 60-second window.
+- Provide a button to export the current session's data to CSV.
+- Provide a button to exit the application cleanly.
+- Include configurable acquisition frequency control (100ms to 10 seconds).
+- Display status indicators for connection and operation mode.
+- Provide device configuration dialog for SCPI settings.
+
+3.3 Data Acquisition and Storage
+- Maintain a rolling 60-second time window of power data.
+- Support configurable acquisition frequency from 100ms to 10 seconds.
+- Store data with timestamps for accurate time-series analysis.
+- Automatically remove data points older than 60 seconds.
+- Handle variable data point counts based on acquisition frequency.
+
+3.4 Simulation Mode
+- When no instrument is detected, fall back to simulated power data with realistic fluctuations.
+- The simulated function (`generate_power_reading`) must remain available and optionally switchable.
+- Simulation mode should respect the configured acquisition frequency.
+
+---
+
+4. Non-Functional Requirements
+
+- Implemented in Python 3.7+.
+- Use PyVISA for instrument communication.
+- Use Matplotlib and Tkinter for GUI and graphing.
+- Compatible with Windows 10/11 and Keysight IO Libraries Suite.
+- GUI updates must have <500ms latency.
+- Data acquisition frequency must be configurable between 100ms and 10 seconds.
+- Application must handle variable data point counts efficiently.
+
+---
+
+5. Technical Requirements
+
+5.1 Libraries / Dependencies
+- pyvisa
+- matplotlib
+- tkinter (standard with Python)
+- csv, datetime, random, time
+
+5.2 Device Requirements
+- Support Keysight N1914A power meter via USB.
+- Keysight IO Libraries Suite must be installed and configured.
+- Use Keysight Connection Expert to verify VISA address.
+
+5.3 Data Management
+- Implement efficient data storage for time-series with variable point counts.
+- Use timestamp-based filtering to maintain 60-second window.
+- Support high-frequency data acquisition (up to 10Hz) without performance degradation.
+
+---
+
+6. Testing & Simulation
+
+- Provide a test case using `generate_power_reading()` instead of hardware.
+- Validate real readings by comparison with the instrument front panel.
+- Test data acquisition at various frequencies (100ms, 500ms, 1s, 5s, 10s).
+- Verify 60-second time window maintenance with different acquisition frequencies.
+- Confirm error handling for:
+  - No instrument detected.
+  - VISA connection failure.
+  - SCPI read returns invalid values.
+  - Invalid acquisition frequency settings.
+
+---
+
+7. Deliverables
+
+- `PowerMeter.py`: main application file.
+- `README.md`: usage and installation instructions.
+- `requirements.txt`: list of required Python packages.
+- `read_n1914a_power()`: modular device communication logic.
+- `PowerMonitor` class: Tkinter GUI and update loop.
+- (Optional) Sample CSV export file.
+
+---
+
+8. Future Considerations
+
+- Add support for additional instruments (e.g., Keysight N1913A or USB sensors).
+- Add logging of errors and connection attempts.
+- Provide channel switching UI for 2–4 channel configurations.
+- Expand SCPI configuration support (e.g., averaging count, measurement unit).
+- Implement data compression for long-term monitoring sessions.
+- Add support for multiple time window options (30s, 60s, 120s, etc.).

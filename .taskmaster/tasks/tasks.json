@@ -1,0 +1,708 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Setup Project Structure and Dependencies",
+        "description": "Create the initial project structure with required files and dependencies for the Power Monitor application.",
+        "details": "1. Create the following files:\n   - PowerMeter.py (main application file)\n   - README.md (usage and installation instructions)\n   - requirements.txt (list of required packages)\n\n2. Add the following dependencies to requirements.txt:\n   - pyvisa\n   - matplotlib\n   - (tkinter comes with Python standard library)\n\n3. Setup the basic project structure with appropriate imports:\n```python\n# PowerMeter.py\nimport pyvisa\nimport matplotlib.pyplot as plt\nfrom matplotlib.figure import Figure\nfrom matplotlib.backends.backend_tkagg import FigureCanvasTkAgg\nimport tkinter as tk\nfrom tkinter import ttk, messagebox\nimport csv\nfrom datetime import datetime\nimport random\nimport time\n```",
+        "testStrategy": "Verify that all required files are created with correct content. Test that the dependencies can be installed using pip and the requirements.txt file. Ensure all imports work without errors by running a simple test script.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Basic Project Files",
+            "description": "Create the initial project files including PowerMeter.py, README.md, and requirements.txt with appropriate content.",
+            "dependencies": [],
+            "details": "1. Create PowerMeter.py with the basic imports:\n```python\nimport pyvisa\nimport matplotlib.pyplot as plt\nfrom matplotlib.figure import Figure\nfrom matplotlib.backends.backend_tkagg import FigureCanvasTkAgg\nimport tkinter as tk\nfrom tkinter import ttk, messagebox\nimport csv\nfrom datetime import datetime\nimport random\nimport time\n```\n2. Create an empty README.md file (will be populated later)\n3. Create requirements.txt with the following content:\n```\npyvisa\nmatplotlib\n```",
+            "status": "done",
+            "testStrategy": "Verify all files exist in the project directory with the correct content. Check that the imports in PowerMeter.py are valid by running 'python -m PowerMeter.py' and confirming no import errors occur."
+          },
+          {
+            "id": 2,
+            "title": "Create PowerMonitor Class Structure",
+            "description": "Define the PowerMonitor class with initialization and basic attributes to serve as the foundation for the application.",
+            "dependencies": [],
+            "details": "Add the following class structure to PowerMeter.py:\n```python\nclass PowerMonitor(tk.Tk):\n    def __init__(self):\n        super().__init__()\n        \n        # Application settings\n        self.title(\"Power Monitor - Keysight N1914A\")\n        self.geometry(\"800x600\")\n        self.minsize(600, 400)\n        \n        # Data storage\n        self.power_data = []\n        self.time_data = []\n        self.max_data_points = 60  # Store 60 seconds of data\n        \n        # Device connection\n        self.device = None\n        self.simulation_mode = True  # Default to simulation mode\n        \n        # Setup the UI components\n        self._create_widgets()\n        \n    def _create_widgets(self):\n        # Placeholder for UI components\n        pass\n```",
+            "status": "done",
+            "testStrategy": "Verify the class can be instantiated without errors by adding a simple test at the end of the file: `if __name__ == \"__main__\": app = PowerMonitor(); app.mainloop()` and running the script."
+          },
+          {
+            "id": 3,
+            "title": "Implement UI Components",
+            "description": "Create the user interface components including frames, buttons, labels, and the matplotlib graph area.",
+            "dependencies": [],
+            "details": "Implement the _create_widgets method in the PowerMonitor class:\n```python\ndef _create_widgets(self):\n    # Create main frame\n    main_frame = ttk.Frame(self)\n    main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)\n    \n    # Create control frame (top)\n    control_frame = ttk.LabelFrame(main_frame, text=\"Controls\")\n    control_frame.pack(fill=tk.X, pady=(0, 10))\n    \n    # Connection controls\n    self.conn_var = tk.StringVar(value=\"Simulation Mode\")\n    conn_label = ttk.Label(control_frame, textvariable=self.conn_var)\n    conn_label.pack(side=tk.LEFT, padx=5, pady=5)\n    \n    self.conn_button = ttk.Button(control_frame, text=\"Connect to Device\", command=self.toggle_connection)\n    self.conn_button.pack(side=tk.LEFT, padx=5, pady=5)\n    \n    # Export button\n    export_button = ttk.Button(control_frame, text=\"Export Data\", command=self.export_data)\n    export_button.pack(side=tk.RIGHT, padx=5, pady=5)\n    \n    # Create display frame (middle)\n    display_frame = ttk.LabelFrame(main_frame, text=\"Current Power\")\n    display_frame.pack(fill=tk.X, pady=(0, 10))\n    \n    self.power_var = tk.StringVar(value=\"-- W\")\n    power_label = ttk.Label(display_frame, textvariable=self.power_var, font=(\"Arial\", 24))\n    power_label.pack(padx=10, pady=10)\n    \n    # Create graph frame (bottom)\n    graph_frame = ttk.LabelFrame(main_frame, text=\"Power History (60s)\")\n    graph_frame.pack(fill=tk.BOTH, expand=True)\n    \n    # Setup matplotlib figure and canvas\n    self.fig = Figure(figsize=(5, 4), dpi=100)\n    self.ax = self.fig.add_subplot(111)\n    self.ax.set_xlabel('Time (s)')\n    self.ax.set_ylabel('Power (W)')\n    self.ax.grid(True)\n    \n    self.canvas = FigureCanvasTkAgg(self.fig, master=graph_frame)\n    self.canvas.draw()\n    self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)\n```",
+            "status": "done",
+            "testStrategy": "Run the application and verify that all UI components are displayed correctly. Check that the layout adjusts properly when resizing the window."
+          },
+          {
+            "id": 4,
+            "title": "Implement Device Connection and Simulation",
+            "description": "Create methods to handle device connection/disconnection and implement simulation mode for testing without hardware.",
+            "dependencies": [],
+            "details": "Add the following methods to the PowerMonitor class:\n```python\ndef toggle_connection(self):\n    \"\"\"Toggle between simulation mode and device connection.\"\"\"\n    if self.simulation_mode:\n        # Try to connect to the device\n        try:\n            rm = pyvisa.ResourceManager()\n            resources = rm.list_resources()\n            \n            # Find the Keysight N1914A device\n            device_address = None\n            for resource in resources:\n                if \"N1914A\" in resource:\n                    device_address = resource\n                    break\n            \n            if device_address:\n                self.device = rm.open_resource(device_address)\n                self.device.timeout = 5000  # 5 seconds timeout\n                self.simulation_mode = False\n                self.conn_var.set(f\"Connected: {device_address}\")\n                self.conn_button.config(text=\"Disconnect\")\n                messagebox.showinfo(\"Connection\", f\"Connected to {device_address}\")\n            else:\n                messagebox.showerror(\"Connection Error\", \"Keysight N1914A not found\")\n        except Exception as e:\n            messagebox.showerror(\"Connection Error\", f\"Failed to connect: {str(e)}\")\n    else:\n        # Disconnect from the device\n        if self.device:\n            self.device.close()\n            self.device = None\n        self.simulation_mode = True\n        self.conn_var.set(\"Simulation Mode\")\n        self.conn_button.config(text=\"Connect to Device\")\n\ndef get_power_reading(self):\n    \"\"\"Get power reading from the device or simulation.\"\"\"\n    if self.simulation_mode:\n        # Generate random power value between 10 and 20 watts\n        return random.uniform(10, 20)\n    else:\n        # Get actual reading from the device\n        try:\n            # This command would need to be adjusted for the specific device\n            self.device.write(\":MEAS:POW?\")\n            response = self.device.read()\n            return float(response.strip())\n        except Exception as e:\n            messagebox.showerror(\"Reading Error\", f\"Failed to read power: {str(e)}\")\n            return 0.0\n```",
+            "status": "done",
+            "testStrategy": "Test the toggle_connection method by clicking the connection button. Verify that simulation mode works correctly by checking that random power values are generated. If hardware is available, test the actual device connection."
+          },
+          {
+            "id": 5,
+            "title": "Implement Data Acquisition and Visualization",
+            "description": "Create methods to continuously acquire power readings, update the display, and visualize the data in the graph.",
+            "dependencies": [],
+            "details": "Add the following methods to the PowerMonitor class:\n```python\ndef start_monitoring(self):\n    \"\"\"Start the power monitoring loop.\"\"\"\n    self.update_power_reading()\n\ndef update_power_reading(self):\n    \"\"\"Update power reading and schedule the next update.\"\"\"\n    try:\n        # Get current time\n        current_time = time.time()\n        \n        # Get power reading\n        power = self.get_power_reading()\n        \n        # Update display\n        self.power_var.set(f\"{power:.2f} W\")\n        \n        # Add to data arrays\n        self.power_data.append(power)\n        self.time_data.append(current_time)\n        \n        # Keep only the last max_data_points\n        if len(self.power_data) > self.max_data_points:\n            self.power_data = self.power_data[-self.max_data_points:]\n            self.time_data = self.time_data[-self.max_data_points:]\n        \n        # Update graph\n        self.update_graph()\n        \n    except Exception as e:\n        print(f\"Error updating power reading: {str(e)}\")\n    \n    # Schedule next update in 1 second\n    self.after(1000, self.update_power_reading)\n\ndef update_graph(self):\n    \"\"\"Update the power history graph.\"\"\"\n    try:\n        # Clear the axis\n        self.ax.clear()\n        \n        # Set labels and grid\n        self.ax.set_xlabel('Time (s)')\n        self.ax.set_ylabel('Power (W)')\n        self.ax.grid(True)\n        \n        # Plot the data\n        if self.time_data and self.power_data:\n            # Convert absolute times to relative times (seconds ago)\n            current_time = self.time_data[-1]\n            relative_times = [t - current_time for t in self.time_data]\n            \n            self.ax.plot(relative_times, self.power_data, 'b-')\n            \n            # Set x-axis limits to show the last 60 seconds\n            self.ax.set_xlim([-60, 0])\n            \n            # Set y-axis limits with some padding\n            if self.power_data:\n                min_power = min(self.power_data)\n                max_power = max(self.power_data)\n                padding = (max_power - min_power) * 0.1 if max_power > min_power else 1.0\n                self.ax.set_ylim([min_power - padding, max_power + padding])\n        \n        # Redraw the canvas\n        self.canvas.draw()\n        \n    except Exception as e:\n        print(f\"Error updating graph: {str(e)}\")\n\ndef export_data(self):\n    \"\"\"Export the current power data to a CSV file.\"\"\"\n    if not self.power_data:\n        messagebox.showinfo(\"Export\", \"No data to export.\")\n        return\n    \n    try:\n        # Generate a filename with current timestamp\n        timestamp = datetime.now().strftime(\"%Y%m%d_%H%M%S\")\n        filename = f\"power_data_{timestamp}.csv\"\n        \n        # Write data to CSV\n        with open(filename, 'w', newline='') as csvfile:\n            writer = csv.writer(csvfile)\n            writer.writerow(['Timestamp', 'Power (W)'])\n            for t, p in zip(self.time_data, self.power_data):\n                time_str = datetime.fromtimestamp(t).strftime(\"%Y-%m-%d %H:%M:%S.%f\")[:-3]\n                writer.writerow([time_str, f\"{p:.6f}\"])\n        \n        messagebox.showinfo(\"Export\", f\"Data exported to {filename}\")\n    except Exception as e:\n        messagebox.showerror(\"Export Error\", f\"Failed to export data: {str(e)}\")\n\ndef main():\n    \"\"\"Main entry point for the Power Monitor application.\"\"\"\n    app = PowerMonitor()\n    app.start_monitoring()\n    app.mainloop()\n\nif __name__ == \"__main__\":\n    main()\n```",
+            "status": "done",
+            "testStrategy": "Run the application and verify that power readings are updated every second. Check that the graph displays and updates correctly with scrolling time axis. Test the export functionality by collecting data and clicking the Export button, then verify the CSV file contains the correct data."
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Implement Device Communication Module",
+        "description": "Create a modular function to communicate with the Keysight N1914A power meter via PyVISA.",
+        "details": "Create the `read_n1914a_power()` function that handles device communication:\n\n```python\ndef read_n1914a_power(resource_manager, visa_address, frequency=1.0e9, channel=1):\n    \"\"\"\n    Read power from Keysight N1914A power meter.\n    \n    Args:\n        resource_manager: PyVISA ResourceManager instance\n        visa_address: VISA address string of the instrument\n        frequency: Measurement frequency in Hz (default: 1 GHz)\n        channel: Channel number to read from (default: 1)\n        \n    Returns:\n        float: Power reading in dBm\n        \n    Raises:\n        Exception: If communication fails\n    \"\"\"\n    try:\n        # Connect to the instrument\n        instrument = resource_manager.open_resource(visa_address)\n        \n        # Configure the instrument\n        instrument.write(f\":SENS{channel}:FREQ {frequency}\")\n        \n        # Fetch power reading\n        power = float(instrument.query(f\":FETCh{channel}:SCALar:POWer:AC?\"))\n        \n        # Close the connection\n        instrument.close()\n        \n        return power\n    except Exception as e:\n        raise Exception(f\"Error reading power: {str(e)}\")\n```",
+        "testStrategy": "Test the function with a connected Keysight N1914A power meter. Verify that it correctly retrieves power readings by comparing with the instrument's front panel display. Test error handling by disconnecting the device mid-operation.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Basic Device Connection and Configuration",
+            "description": "Create the core functionality to establish connection with the N1914A power meter and configure basic settings.",
+            "dependencies": [],
+            "details": "Implement the first part of the read_n1914a_power() function that handles establishing connection with the device and setting the frequency. Include proper error handling for connection failures. Focus on the resource_manager.open_resource() call and the frequency configuration command.",
+            "status": "done",
+            "testStrategy": "Test connection to a real N1914A device with valid VISA address. Verify error handling by testing with invalid VISA addresses."
+          },
+          {
+            "id": 2,
+            "title": "Implement Power Reading Functionality",
+            "description": "Add the functionality to fetch power readings from the configured channel of the N1914A power meter.",
+            "dependencies": [
+              "2.1"
+            ],
+            "details": "Implement the part of the read_n1914a_power() function that sends the query command to fetch power readings. Handle the conversion of the returned string to a float value. Implement proper error handling for failed queries or invalid responses.",
+            "status": "done",
+            "testStrategy": "Test with a connected N1914A device and verify the returned power values match the display on the device. Test with different channel settings."
+          },
+          {
+            "id": 3,
+            "title": "Implement Resource Cleanup",
+            "description": "Ensure proper cleanup of resources after reading from the device to prevent resource leaks.",
+            "dependencies": [
+              "2.2"
+            ],
+            "details": "Complete the read_n1914a_power() function by adding proper resource cleanup, ensuring the instrument connection is closed after use, even if an error occurs. Use try-finally blocks to guarantee cleanup happens regardless of execution path.",
+            "status": "done",
+            "testStrategy": "Verify that instrument connections are properly closed by monitoring system resources during repeated function calls."
+          },
+          {
+            "id": 4,
+            "title": "Add Advanced Error Handling and Logging",
+            "description": "Enhance the error handling in the function to provide more detailed error information and implement logging.",
+            "dependencies": [
+              "2.3"
+            ],
+            "details": "Improve the exception handling in read_n1914a_power() to catch specific PyVISA exceptions and provide more informative error messages. Add detailed error information that helps diagnose common issues like connection timeouts, device not found, or command syntax errors.",
+            "status": "done",
+            "testStrategy": "Test error scenarios by disconnecting the device mid-operation, using invalid commands, and simulating timeouts. Verify appropriate error messages are generated."
+          },
+          {
+            "id": 5,
+            "title": "Add Input Parameter Validation",
+            "description": "Implement validation for function input parameters to prevent invalid configurations.",
+            "dependencies": [
+              "2.4"
+            ],
+            "details": "Add validation for the read_n1914a_power() function parameters: check that frequency is within the device's supported range, channel is a valid integer (typically 1 or 2 for N1914A), and visa_address has a valid format. Raise appropriate ValueError exceptions with descriptive messages when validation fails.",
+            "status": "done",
+            "testStrategy": "Test the function with various invalid inputs (negative frequency, out-of-range channel numbers, malformed VISA addresses) and verify appropriate validation errors are raised."
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Implement Simulation Mode",
+        "description": "Create a function to generate simulated power readings when no physical hardware is available.",
+        "details": "Implement the `generate_power_reading()` function to provide realistic simulated power data:\n\n```python\ndef generate_power_reading(base_power=-30.0, fluctuation=0.5):\n    \"\"\"\n    Generate a simulated power reading with realistic fluctuations.\n    \n    Args:\n        base_power: Base power level in dBm (default: -30.0 dBm)\n        fluctuation: Maximum random fluctuation in dBm (default: 0.5 dBm)\n        \n    Returns:\n        float: Simulated power reading in dBm\n    \"\"\"\n    # Generate random fluctuation within the specified range\n    random_fluctuation = (random.random() * 2 - 1) * fluctuation\n    \n    # Return base power with added fluctuation\n    return base_power + random_fluctuation\n```",
+        "testStrategy": "Test the function by calling it multiple times and verifying that it returns values within the expected range (base_power ± fluctuation). Plot multiple readings to confirm realistic fluctuations.",
+        "priority": "medium",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Basic Random Fluctuation Generator",
+            "description": "Create the core function to generate random power readings with basic fluctuations around a base value.",
+            "dependencies": [],
+            "details": "Import the random module and implement the basic generate_power_reading function that takes a base_power and fluctuation parameter. Use random.random() to generate values between 0 and 1, then scale and shift to create the desired fluctuation range. Return the base power plus the calculated fluctuation.",
+            "status": "done",
+            "testStrategy": "Call the function multiple times and verify that all returned values fall within the expected range (base_power ± fluctuation). Calculate the mean of many readings to confirm it approximates the base_power."
+          },
+          {
+            "id": 2,
+            "title": "Add Realistic Noise Patterns",
+            "description": "Enhance the simulation by adding more realistic noise patterns that better mimic actual power meter behavior.",
+            "dependencies": [
+              "3.1"
+            ],
+            "details": "Modify the generate_power_reading function to include occasional small spikes and drifts. Add a time-dependent component using a simple sine wave with a very small amplitude (e.g., 0.1 * sin(time)) to simulate slow environmental drift. Implement a small probability (e.g., 0.05) of generating a slightly larger fluctuation to simulate occasional interference.",
+            "status": "done",
+            "testStrategy": "Generate a sequence of 1000+ readings and plot them. Visually inspect the plot to confirm the presence of realistic patterns. Calculate the standard deviation to ensure it matches expected characteristics."
+          },
+          {
+            "id": 3,
+            "title": "Implement Configurable Signal Characteristics",
+            "description": "Add parameters to control signal characteristics like drift, stability, and noise profile.",
+            "dependencies": [
+              "3.2"
+            ],
+            "details": "Extend the generate_power_reading function with additional optional parameters: drift_amplitude (controls slow drift magnitude), stability_factor (inversely affects random noise), and spike_probability (controls frequency of power spikes). Implement logic to use these parameters to adjust the simulation behavior. Default values should match typical real-world behavior.",
+            "status": "done",
+            "testStrategy": "Test with various parameter combinations to verify each parameter correctly influences the output. Generate and plot multiple data series with different parameters to confirm distinct behavior patterns."
+          },
+          {
+            "id": 4,
+            "title": "Create Simulation Mode Toggle",
+            "description": "Implement a function to switch between real hardware readings and simulated readings.",
+            "dependencies": [
+              "3.3"
+            ],
+            "details": "Create a get_power_reading function that acts as a facade, accepting a simulation_mode boolean parameter. When simulation_mode is True, it calls generate_power_reading; otherwise, it attempts to read from actual hardware. Include error handling to fall back to simulation if hardware access fails. This function should maintain the same return signature regardless of the source of readings.",
+            "status": "done",
+            "testStrategy": "Test switching between modes and verify appropriate function calls are made. Mock the hardware reading function and confirm the toggle correctly chooses between real and simulated data sources."
+          },
+          {
+            "id": 5,
+            "title": "Add Simulation Indicator and Documentation",
+            "description": "Implement visual indicators when in simulation mode and add comprehensive documentation.",
+            "dependencies": [
+              "3.4"
+            ],
+            "details": "Add a simulation_active flag to track the current mode. Update the generate_power_reading function's docstring with detailed information about all parameters and behavior. Create a get_simulation_status function that returns the current simulation state and a descriptive string about the simulation parameters being used. This will be used later by the GUI to display simulation status to users.",
+            "status": "done",
+            "testStrategy": "Review documentation for completeness. Verify the simulation status function correctly reports the active state and parameters. Test that the simulation indicator information changes appropriately when simulation parameters are modified."
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Implement Device Detection and Connection",
+        "description": "Create functionality to detect and connect to a Keysight N1914A device via USB using PyVISA.",
+        "details": "Implement device detection and connection logic:\n\n```python\ndef detect_power_meter():\n    \"\"\"\n    Detect Keysight N1914A power meter connected via USB.\n    \n    Returns:\n        tuple: (ResourceManager, visa_address) if found, (ResourceManager, None) if not found\n    \"\"\"\n    try:\n        # Create a resource manager\n        rm = pyvisa.ResourceManager()\n        \n        # List all available resources\n        resources = rm.list_resources()\n        \n        # Look for Keysight N1914A in the resources\n        for resource in resources:\n            if 'USB' in resource:\n                try:\n                    # Try to open the resource\n                    instrument = rm.open_resource(resource)\n                    \n                    # Query the instrument identity\n                    idn = instrument.query('*IDN?')\n                    \n                    # Check if it's a Keysight N1914A\n                    if 'N1914A' in idn:\n                        instrument.close()\n                        return rm, resource\n                    \n                    instrument.close()\n                except Exception:\n                    # Skip resources that can't be opened or queried\n                    continue\n        \n        # No power meter found\n        return rm, None\n    except Exception as e:\n        print(f\"Error detecting power meter: {str(e)}\")\n        return None, None\n```",
+        "testStrategy": "Test with a connected Keysight N1914A to verify it's correctly detected. Test with no device connected to verify it returns None for the visa_address. Test with other USB devices connected to ensure it only detects the correct instrument.",
+        "priority": "high",
+        "dependencies": [
+          1,
+          2
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement PyVISA Resource Manager Initialization",
+            "description": "Create a function to initialize the PyVISA ResourceManager with proper error handling and backend selection.",
+            "dependencies": [],
+            "details": "Create a function that initializes the PyVISA ResourceManager with appropriate error handling. The function should attempt to use the default backend first, then fall back to other available backends if needed. It should return the ResourceManager object or None if initialization fails.\n\n```python\ndef initialize_visa_resource_manager():\n    \"\"\"\n    Initialize PyVISA ResourceManager with error handling.\n    \n    Returns:\n        ResourceManager: PyVISA ResourceManager object or None if initialization fails\n    \"\"\"\n    try:\n        # Try with default backend\n        rm = pyvisa.ResourceManager()\n        return rm\n    except Exception as e:\n        print(f\"Error initializing ResourceManager with default backend: {str(e)}\")\n        try:\n            # Try with @py backend as fallback\n            rm = pyvisa.ResourceManager('@py')\n            return rm\n        except Exception as e:\n            print(f\"Error initializing ResourceManager with @py backend: {str(e)}\")\n            return None\n```",
+            "status": "done",
+            "testStrategy": "Test the function with and without PyVISA properly installed. Verify it returns a valid ResourceManager when PyVISA is available and None when it's not. Test with different backends by temporarily modifying the VISA library path."
+          },
+          {
+            "id": 2,
+            "title": "Implement USB Device Discovery Function",
+            "description": "Create a function to scan and list all USB devices, filtering for potential measurement instruments.",
+            "dependencies": [
+              "4.1"
+            ],
+            "details": "Implement a function that uses the ResourceManager to discover all connected USB devices. The function should return a list of USB resources that could potentially be measurement instruments.\n\n```python\ndef discover_usb_devices(resource_manager):\n    \"\"\"\n    Discover all USB devices that could be measurement instruments.\n    \n    Args:\n        resource_manager: PyVISA ResourceManager instance\n        \n    Returns:\n        list: List of USB resource strings or empty list if none found\n    \"\"\"\n    if resource_manager is None:\n        return []\n        \n    try:\n        # Get all resources\n        all_resources = resource_manager.list_resources()\n        \n        # Filter for USB devices\n        usb_resources = [res for res in all_resources if 'USB' in res]\n        \n        return usb_resources\n    except Exception as e:\n        print(f\"Error discovering USB devices: {str(e)}\")\n        return []\n```",
+            "status": "done",
+            "testStrategy": "Test with various USB devices connected (not just instruments). Verify it correctly identifies all USB resources. Test with no USB devices connected to ensure it returns an empty list."
+          },
+          {
+            "id": 3,
+            "title": "Implement Keysight N1914A Identification Function",
+            "description": "Create a function to identify if a given resource is a Keysight N1914A power meter by querying its identity.",
+            "dependencies": [
+              "4.1",
+              "4.2"
+            ],
+            "details": "Implement a function that attempts to open a resource and query its identity to determine if it's a Keysight N1914A power meter.\n\n```python\ndef identify_n1914a(resource_manager, resource_address):\n    \"\"\"\n    Identify if a resource is a Keysight N1914A power meter.\n    \n    Args:\n        resource_manager: PyVISA ResourceManager instance\n        resource_address: VISA resource address string\n        \n    Returns:\n        bool: True if the device is a Keysight N1914A, False otherwise\n    \"\"\"\n    if resource_manager is None or not resource_address:\n        return False\n        \n    try:\n        # Open the resource with appropriate timeout\n        instrument = resource_manager.open_resource(resource_address)\n        instrument.timeout = 2000  # 2 seconds timeout\n        \n        # Query the instrument identity\n        idn = instrument.query('*IDN?')\n        instrument.close()\n        \n        # Check if it's a Keysight N1914A\n        return 'N1914A' in idn\n    except Exception as e:\n        print(f\"Error identifying device at {resource_address}: {str(e)}\")\n        return False\n```",
+            "status": "done",
+            "testStrategy": "Test with a Keysight N1914A connected to verify it returns True. Test with other instruments to verify it returns False. Test with non-instrument USB devices to ensure it handles errors gracefully."
+          },
+          {
+            "id": 4,
+            "title": "Implement Complete Device Detection Function",
+            "description": "Integrate the previous functions to create a comprehensive device detection function that finds and identifies the Keysight N1914A.",
+            "dependencies": [
+              "4.1",
+              "4.2",
+              "4.3"
+            ],
+            "details": "Implement the complete detect_power_meter function that uses the previously created functions to find and identify a Keysight N1914A power meter.\n\n```python\ndef detect_power_meter():\n    \"\"\"\n    Detect Keysight N1914A power meter connected via USB.\n    \n    Returns:\n        tuple: (ResourceManager, visa_address) if found, (ResourceManager, None) if not found\n    \"\"\"\n    # Initialize resource manager\n    rm = initialize_visa_resource_manager()\n    if rm is None:\n        return None, None\n    \n    # Discover USB devices\n    usb_resources = discover_usb_devices(rm)\n    \n    # Check each resource to find the N1914A\n    for resource in usb_resources:\n        if identify_n1914a(rm, resource):\n            return rm, resource\n    \n    # No power meter found\n    return rm, None\n```",
+            "status": "done",
+            "testStrategy": "Test with a Keysight N1914A connected to verify it correctly returns the ResourceManager and address. Test with no device connected to verify it returns (ResourceManager, None). Test with other USB devices to ensure it only detects the correct instrument."
+          },
+          {
+            "id": 5,
+            "title": "Implement Connection Management Class",
+            "description": "Create a class to manage the connection to the power meter, including connection establishment, status checking, and disconnection.",
+            "dependencies": [
+              "4.4"
+            ],
+            "details": "Implement a PowerMeterConnection class that manages the connection to the Keysight N1914A power meter, providing methods for connecting, checking connection status, and disconnecting.\n\n```python\nclass PowerMeterConnection:\n    def __init__(self):\n        \"\"\"\n        Initialize the power meter connection manager.\n        \"\"\"\n        self.rm = None\n        self.address = None\n        self.instrument = None\n        self.connected = False\n    \n    def connect(self):\n        \"\"\"\n        Detect and connect to the Keysight N1914A power meter.\n        \n        Returns:\n            bool: True if connection successful, False otherwise\n        \"\"\"\n        # Detect the power meter\n        self.rm, self.address = detect_power_meter()\n        \n        if self.rm is None or self.address is None:\n            self.connected = False\n            return False\n        \n        try:\n            # Open the connection\n            self.instrument = self.rm.open_resource(self.address)\n            self.instrument.timeout = 5000  # 5 seconds timeout\n            \n            # Verify connection with a simple command\n            self.instrument.write('*CLS')\n            self.connected = True\n            return True\n        except Exception as e:\n            print(f\"Error connecting to power meter: {str(e)}\")\n            self.disconnect()\n            return False\n    \n    def is_connected(self):\n        \"\"\"\n        Check if the power meter is currently connected.\n        \n        Returns:\n            bool: True if connected, False otherwise\n        \"\"\"\n        if not self.connected or self.instrument is None:\n            return False\n            \n        try:\n            # Test connection with a simple query\n            self.instrument.query('*IDN?')\n            return True\n        except Exception:\n            self.connected = False\n            return False\n    \n    def disconnect(self):\n        \"\"\"\n        Disconnect from the power meter and clean up resources.\n        \"\"\"\n        if self.instrument is not None:\n            try:\n                self.instrument.close()\n            except Exception:\n                pass\n            self.instrument = None\n        \n        self.connected = False\n```",
+            "status": "done",
+            "testStrategy": "Test connecting to a Keysight N1914A and verify the connection status. Test disconnecting and reconnecting. Test the is_connected method by disconnecting the device while the program is running. Test error handling by attempting to connect to a device that isn't a Keysight N1914A."
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Implement GUI Layout",
+        "description": "Create the Tkinter GUI layout with display areas for current power reading and the time-series graph.",
+        "details": "Implement the PowerMonitor class with GUI layout:\n\n```python\nclass PowerMonitor(tk.Tk):\n    def __init__(self):\n        super().__init__()\n        \n        # Configure the main window\n        self.title(\"Power Monitor - Keysight N1914A\")\n        self.geometry(\"800x600\")\n        self.protocol(\"WM_DELETE_WINDOW\", self.on_closing)\n        \n        # Initialize data storage\n        self.power_data = []\n        self.time_data = []\n        self.max_data_points = 60  # Store 60 seconds of data\n        \n        # Create GUI components\n        self.create_widgets()\n        \n        # Initialize device connection\n        self.rm, self.visa_address = detect_power_meter()\n        if self.visa_address:\n            self.status_var.set(f\"Connected to: {self.visa_address}\")\n            self.simulation_mode = False\n        else:\n            self.status_var.set(\"No device detected. Running in simulation mode.\")\n            self.simulation_mode = True\n    \n    def create_widgets(self):\n        # Create frame for power display\n        power_frame = ttk.Frame(self)\n        power_frame.pack(pady=10, fill=tk.X)\n        \n        # Power reading display\n        ttk.Label(power_frame, text=\"Current Power:\").pack(side=tk.LEFT, padx=10)\n        self.power_var = tk.StringVar(value=\"---.-- dBm\")\n        ttk.Label(power_frame, textvariable=self.power_var, font=(\"Arial\", 28)).pack(side=tk.LEFT, padx=10)\n        \n        # Status display\n        self.status_var = tk.StringVar(value=\"Initializing...\")\n        ttk.Label(self, textvariable=self.status_var).pack(pady=5)\n        \n        # Create matplotlib figure for the graph\n        self.fig = Figure(figsize=(8, 4), dpi=100)\n        self.ax = self.fig.add_subplot(111)\n        self.ax.set_title(\"Power vs Time\")\n        self.ax.set_xlabel(\"Time (s)\")\n        self.ax.set_ylabel(\"Power (dBm)\")\n        self.ax.grid(True)\n        \n        # Embed the matplotlib figure in tkinter\n        self.canvas = FigureCanvasTkAgg(self.fig, master=self)\n        self.canvas.draw()\n        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10, pady=10)\n        \n        # Create button frame\n        button_frame = ttk.Frame(self)\n        button_frame.pack(pady=10, fill=tk.X)\n        \n        # Export button\n        self.export_button = ttk.Button(button_frame, text=\"Export Data\", command=self.export_data)\n        self.export_button.pack(side=tk.LEFT, padx=10)\n        \n        # Exit button\n        self.exit_button = ttk.Button(button_frame, text=\"Exit\", command=self.on_closing)\n        self.exit_button.pack(side=tk.RIGHT, padx=10)\n```",
+        "testStrategy": "Launch the GUI and verify that all components are displayed correctly. Check that the window size, title, and layout match the requirements. Test window resizing behavior.",
+        "priority": "high",
+        "dependencies": [
+          1,
+          4
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Main Window and Frame Structure",
+            "description": "Set up the main Tkinter window with proper title, size, and basic frame structure for organizing the GUI components.",
+            "dependencies": [],
+            "details": "Implement the basic window setup in the PowerMonitor class constructor, including setting the window title, geometry, and close protocol. Create the main frames that will contain the power display, status information, graph area, and button controls. This provides the structural foundation for all other GUI elements.",
+            "status": "done",
+            "testStrategy": "Launch the application and verify the window appears with the correct title 'Power Monitor - Keysight N1914A' and dimensions of 800x600. Check that the window can be resized and that the close button triggers the on_closing protocol."
+          },
+          {
+            "id": 2,
+            "title": "Implement Power Reading Display Area",
+            "description": "Create the display area for showing the current power reading with appropriate styling and layout.",
+            "dependencies": [
+              "5.1"
+            ],
+            "details": "Add a frame for the power display at the top of the window. Within this frame, create a label for 'Current Power:' and a variable label to show the actual power reading with a large font size. Initialize the power_var StringVar with a default value of '---.-- dBm'. Position these elements using appropriate padding and layout managers.",
+            "status": "done",
+            "testStrategy": "Verify that the power display area appears at the top of the window with the correct label and default value. Check that the font size is large enough to be easily readable."
+          },
+          {
+            "id": 3,
+            "title": "Implement Status Display Area",
+            "description": "Create the status display area to show connection status and operational messages.",
+            "dependencies": [
+              "5.1"
+            ],
+            "details": "Add a status display area below the power reading display. Create a status_var StringVar initialized with 'Initializing...' and connect it to a label. This will be used to display connection status and other operational messages to the user. Apply appropriate styling and padding to ensure good visibility.",
+            "status": "done",
+            "testStrategy": "Check that the status area appears below the power reading with the initial 'Initializing...' message. Verify that the text is clearly visible and properly positioned."
+          },
+          {
+            "id": 4,
+            "title": "Implement Matplotlib Graph Area",
+            "description": "Create and embed a Matplotlib figure for displaying the time-series power graph.",
+            "dependencies": [
+              "5.1"
+            ],
+            "details": "Create a matplotlib Figure object with appropriate size and DPI. Add a subplot with proper title, axis labels, and grid. Configure the graph to display power (dBm) on the y-axis and time (s) on the x-axis. Embed this figure in the Tkinter window using FigureCanvasTkAgg. Position the canvas to expand and fill the main area of the window.",
+            "status": "done",
+            "testStrategy": "Verify that the graph area appears in the main section of the window with the correct title 'Power vs Time' and axis labels. Check that the grid is visible and that the graph area expands when the window is resized."
+          },
+          {
+            "id": 5,
+            "title": "Implement Button Controls",
+            "description": "Add control buttons for exporting data and exiting the application.",
+            "dependencies": [
+              "5.1"
+            ],
+            "details": "Create a button frame at the bottom of the window. Add an 'Export Data' button on the left side that calls the export_data method when clicked. Add an 'Exit' button on the right side that calls the on_closing method. Apply appropriate styling and padding to the buttons. Ensure the buttons are properly connected to their respective callback functions.",
+            "status": "done",
+            "testStrategy": "Verify that both buttons appear at the bottom of the window with correct labels. Test clicking the buttons to ensure they trigger the appropriate callback functions (though the actual functionality will be implemented in other tasks)."
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Implement Real-time Data Acquisition Loop",
+        "description": "Create the update loop to continuously fetch power readings and update the GUI.",
+        "details": "Add the update loop methods to the PowerMonitor class:\n\n```python\ndef start_monitoring(self):\n    \"\"\"\n    Start the power monitoring loop.\n    \"\"\"\n    self.update_power_reading()\n\ndef update_power_reading(self):\n    \"\"\"\n    Update power reading and schedule the next update.\n    \"\"\"\n    try:\n        # Get current time\n        current_time = time.time()\n        \n        # Get power reading (real or simulated)\n        if self.simulation_mode:\n            power = generate_power_reading()\n        else:\n            power = read_n1914a_power(self.rm, self.visa_address)\n        \n        # Update the display\n        self.power_var.set(f\"{power:.2f} dBm\")\n        \n        # Update data arrays\n        self.power_data.append(power)\n        self.time_data.append(current_time)\n        \n        # Keep only the last 60 data points\n        if len(self.power_data) > self.max_data_points:\n            self.power_data.pop(0)\n            self.time_data.pop(0)\n        \n        # Update the graph\n        self.update_graph()\n        \n        # Schedule the next update (1 second interval)\n        self.after(1000, self.update_power_reading)\n    except Exception as e:\n        messagebox.showerror(\"Error\", f\"Failed to update power reading: {str(e)}\")\n        self.status_var.set(f\"Error: {str(e)}\")\n        # Try again after a delay\n        self.after(5000, self.update_power_reading)\n\ndef update_graph(self):\n    \"\"\"\n    Update the power vs time graph.\n    \"\"\"\n    # Clear the current plot\n    self.ax.clear()\n    \n    # Set labels and grid\n    self.ax.set_title(\"Power vs Time\")\n    self.ax.set_xlabel(\"Time (s)\")\n    self.ax.set_ylabel(\"Power (dBm)\")\n    self.ax.grid(True)\n    \n    # Plot the data\n    if self.time_data and self.power_data:\n        # Convert absolute times to relative times (seconds from start)\n        relative_times = [t - self.time_data[0] for t in self.time_data]\n        self.ax.plot(relative_times, self.power_data, 'b-')\n        \n        # Set x-axis limits to show the last 60 seconds\n        if len(relative_times) > 1:\n            self.ax.set_xlim(max(0, relative_times[-1] - 60), relative_times[-1])\n    \n    # Redraw the canvas\n    self.canvas.draw()\n```",
+        "testStrategy": "Run the application and verify that power readings are updated every second. Check that the graph scrolls properly and shows the last 60 seconds of data. Test both with real hardware and in simulation mode.",
+        "priority": "high",
+        "dependencies": [
+          2,
+          3,
+          5
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Power Reading Acquisition Logic",
+            "description": "Create the core functionality to acquire power readings from either the hardware device or simulation mode based on the current configuration.",
+            "dependencies": [],
+            "details": "Add the logic to fetch power readings in the update_power_reading method. This includes implementing the conditional logic to either call generate_power_reading() in simulation mode or read_n1914a_power() when using real hardware. Include proper error handling for device communication failures.",
+            "status": "done",
+            "testStrategy": "Test both simulation and hardware modes to verify correct power readings are obtained. Verify error handling by intentionally disconnecting hardware during operation."
+          },
+          {
+            "id": 2,
+            "title": "Implement Data Management for Time Series",
+            "description": "Create the functionality to store and manage the time-series data, including maintaining the sliding window of the last 60 data points.",
+            "dependencies": [
+              "6.1"
+            ],
+            "details": "Implement the data storage logic in update_power_reading() that appends new readings to the power_data and time_data arrays. Add the logic to maintain only the most recent 60 data points by removing the oldest entries when the arrays exceed the maximum length. Ensure proper synchronization between time and power data arrays.",
+            "status": "done",
+            "testStrategy": "Test by running the monitoring for more than 60 seconds and verify that only the most recent 60 data points are retained. Check that time and power data arrays remain properly synchronized."
+          },
+          {
+            "id": 3,
+            "title": "Implement Graph Updating Functionality",
+            "description": "Create the update_graph method to refresh the matplotlib plot with the latest power readings.",
+            "dependencies": [
+              "6.2"
+            ],
+            "details": "Implement the update_graph method that clears the current plot, sets appropriate labels and grid, converts absolute timestamps to relative times, plots the data, sets appropriate axis limits to show the last 60 seconds, and redraws the canvas. Ensure the graph scales appropriately as new data arrives.",
+            "status": "done",
+            "testStrategy": "Verify that the graph updates correctly with each new reading. Check that the x-axis properly shows relative time and automatically scrolls to show only the last 60 seconds of data."
+          },
+          {
+            "id": 4,
+            "title": "Implement Monitoring Loop with Scheduling",
+            "description": "Create the scheduling mechanism that ensures regular updates at 1-second intervals and implements error recovery.",
+            "dependencies": [
+              "6.1",
+              "6.3"
+            ],
+            "details": "Implement the scheduling logic in update_power_reading() that uses the Tkinter after() method to schedule the next update at 1-second intervals. Add error recovery that reschedules updates after a longer delay (5 seconds) when errors occur. Implement the start_monitoring method that initiates the update loop.",
+            "status": "done",
+            "testStrategy": "Test that updates occur at 1-second intervals by monitoring timestamps. Verify error recovery by simulating errors and checking that the system attempts to recover after the specified delay."
+          },
+          {
+            "id": 5,
+            "title": "Implement Status Updates and User Feedback",
+            "description": "Add functionality to update the GUI with current status information and error messages.",
+            "dependencies": [
+              "6.4"
+            ],
+            "details": "Enhance the update_power_reading method to update the power_var display with formatted power readings. Implement status updates to the status_var when errors occur. Add visual indicators in the GUI that show when data is being actively collected and when errors occur.",
+            "status": "done",
+            "testStrategy": "Test by monitoring the GUI during normal operation and during error conditions. Verify that power readings are correctly formatted and displayed, and that error messages are clearly shown to the user."
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Implement Data Export Functionality",
+        "description": "Create functionality to export the collected power data to a CSV file.",
+        "details": "Add the export_data method to the PowerMonitor class:\n\n```python\ndef export_data(self):\n    \"\"\"\n    Export the current power data to a CSV file.\n    \"\"\"\n    if not self.power_data:\n        messagebox.showinfo(\"Export\", \"No data to export.\")\n        return\n    \n    try:\n        # Generate a filename with current timestamp\n        timestamp = datetime.now().strftime(\"%Y%m%d_%H%M%S\")\n        filename = f\"power_data_{timestamp}.csv\"\n        \n        # Ask user for save location\n        from tkinter import filedialog\n        filepath = filedialog.asksaveasfilename(\n            defaultextension=\".csv\",\n            filetypes=[(\"CSV files\", \"*.csv\")],\n            initialfile=filename\n        )\n        \n        if not filepath:\n            return  # User cancelled\n        \n        # Write data to CSV\n        with open(filepath, 'w', newline='') as csvfile:\n            writer = csv.writer(csvfile)\n            \n            # Write header\n            writer.writerow([\"Time (s)\", \"Power (dBm)\"])\n            \n            # Write data rows\n            start_time = self.time_data[0]\n            for t, p in zip(self.time_data, self.power_data):\n                writer.writerow([f\"{t - start_time:.2f}\", f\"{p:.2f}\"])\n        \n        messagebox.showinfo(\"Export\", f\"Data exported to {filepath}\")\n    except Exception as e:\n        messagebox.showerror(\"Export Error\", f\"Failed to export data: {str(e)}\")\n```",
+        "testStrategy": "Test the export functionality by collecting some data and clicking the Export button. Verify that the CSV file is created with the correct format and contains all the data points. Check that the file can be opened in Excel or other CSV readers.",
+        "priority": "medium",
+        "dependencies": [
+          6
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Data Validation Function",
+            "description": "Implement a function to validate if there is data available for export and handle the case when no data is present.",
+            "dependencies": [],
+            "details": "Create a helper method `_validate_export_data()` that checks if power_data exists and is not empty. This method should display an appropriate message box if there's no data to export and return a boolean indicating whether export should proceed. This will be called at the beginning of the export_data method.",
+            "status": "done",
+            "testStrategy": "Test with both empty and populated data arrays. Verify appropriate message is shown when no data exists."
+          },
+          {
+            "id": 2,
+            "title": "Implement File Path Selection",
+            "description": "Create functionality to generate a default filename with timestamp and allow the user to select a save location.",
+            "dependencies": [
+              "7.1"
+            ],
+            "details": "Implement the file dialog portion of the export_data method that generates a timestamp-based filename and uses tkinter's filedialog to let the user choose where to save the file. Handle the case where the user cancels the save operation.",
+            "status": "done",
+            "testStrategy": "Test by verifying the generated filename format and by testing the cancel operation in the file dialog."
+          },
+          {
+            "id": 3,
+            "title": "Implement CSV Data Writing",
+            "description": "Create the core functionality to write the power and time data to a CSV file with proper formatting.",
+            "dependencies": [
+              "7.2"
+            ],
+            "details": "Implement the CSV writing portion of the export_data method that creates the CSV file, writes the header row, and formats each data point with the correct precision. Ensure time values are relative to the first measurement.",
+            "status": "done",
+            "testStrategy": "Test by exporting data and verifying the CSV file structure, headers, and data formatting. Open the file in a spreadsheet application to confirm readability."
+          },
+          {
+            "id": 4,
+            "title": "Implement Error Handling",
+            "description": "Add comprehensive error handling for the export process to catch and report any issues that occur during file operations.",
+            "dependencies": [
+              "7.3"
+            ],
+            "details": "Implement the try-except block in the export_data method to catch potential errors during file operations. Display appropriate error messages to the user when exceptions occur, including specific error details.",
+            "status": "done",
+            "testStrategy": "Test by forcing various error conditions (e.g., insufficient permissions, disk full) and verify appropriate error messages are displayed."
+          },
+          {
+            "id": 5,
+            "title": "Add Export Button to GUI",
+            "description": "Add an Export button to the GUI that calls the export_data method when clicked.",
+            "dependencies": [
+              "7.4"
+            ],
+            "details": "Add an 'Export Data' button to the control panel section of the GUI. Connect this button to the export_data method. Position it appropriately in the interface layout, possibly near other data management controls.",
+            "status": "done",
+            "testStrategy": "Test the button's appearance and positioning in the GUI. Click the button and verify it correctly triggers the export_data method with both valid data and no data scenarios."
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Implement Application Cleanup and Exit",
+        "description": "Implement proper cleanup of resources when the application is closed.",
+        "details": "Add the on_closing method to the PowerMonitor class:\n\n```python\ndef on_closing(self):\n    \"\"\"\n    Handle application closing - clean up resources.\n    \"\"\"\n    try:\n        # Ask user to confirm exit if there's unsaved data\n        if self.power_data and messagebox.askyesno(\"Exit\", \"Do you want to save the data before exiting?\"):\n            self.export_data()\n        \n        # Clean up resources\n        if hasattr(self, 'rm') and self.rm is not None:\n            self.rm.close()\n        \n        # Destroy the application window\n        self.destroy()\n    except Exception as e:\n        print(f\"Error during cleanup: {str(e)}\")\n        self.destroy()\n```",
+        "testStrategy": "Test closing the application using both the Exit button and the window close button. Verify that resources are properly cleaned up and that the user is prompted to save data if there are unsaved readings.",
+        "priority": "medium",
+        "dependencies": [
+          6,
+          7
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement on_closing Method Structure",
+            "description": "Create the basic structure of the on_closing method in the PowerMonitor class to handle application closing events.",
+            "dependencies": [],
+            "details": "Add the on_closing method to the PowerMonitor class with try-except block and basic window destruction functionality. Include docstring explaining the method's purpose. The method should be connected to the window's close button via protocol(\"WM_DELETE_WINDOW\", self.on_closing) in the __init__ method.",
+            "status": "done",
+            "testStrategy": "Test by clicking the window close button (X) and verify the application closes without errors."
+          },
+          {
+            "id": 2,
+            "title": "Implement Unsaved Data Check and Save Prompt",
+            "description": "Add functionality to check for unsaved data and prompt the user to save before exiting.",
+            "dependencies": [
+              "8.1"
+            ],
+            "details": "Enhance the on_closing method to check if self.power_data contains unsaved measurements. If data exists, use messagebox.askyesno to ask the user if they want to save before exiting. If the user selects 'yes', call the self.export_data() method to save the data.",
+            "status": "done",
+            "testStrategy": "Test by collecting data and then closing the application. Verify the save prompt appears only when unsaved data exists. Test both 'yes' and 'no' responses."
+          },
+          {
+            "id": 3,
+            "title": "Implement Resource Manager Cleanup",
+            "description": "Add code to properly close the PyVISA resource manager when the application exits.",
+            "dependencies": [
+              "8.1"
+            ],
+            "details": "Add code to check if the resource manager (self.rm) exists using hasattr() and is not None. If it exists, call its close() method to properly release hardware resources and connections.",
+            "status": "done",
+            "testStrategy": "Test with a connected device to ensure the VISA resources are properly released. Check that the device becomes available to other applications after closing."
+          },
+          {
+            "id": 4,
+            "title": "Implement Exception Handling for Cleanup Process",
+            "description": "Add robust exception handling to ensure the application always closes gracefully even if errors occur during cleanup.",
+            "dependencies": [
+              "8.2",
+              "8.3"
+            ],
+            "details": "Enhance the try-except block in on_closing to catch and log any exceptions that occur during the cleanup process. Print error messages to the console using print(f\"Error during cleanup: {str(e)}\"). Ensure the application window is destroyed (self.destroy()) even if an exception occurs.",
+            "status": "done",
+            "testStrategy": "Test by forcing errors during cleanup (e.g., by manually corrupting resource manager references) and verify the application still closes and displays appropriate error messages."
+          },
+          {
+            "id": 5,
+            "title": "Connect Cleanup Method to Application Exit Points",
+            "description": "Ensure the cleanup method is called from all possible application exit points, including menu options and keyboard shortcuts.",
+            "dependencies": [
+              "8.4"
+            ],
+            "details": "Add an 'Exit' option to the application's File menu that calls the on_closing method. Bind the Escape key and Ctrl+Q keyboard shortcuts to also trigger the on_closing method. Update the __init__ method to include: self.bind('<Escape>', lambda e: self.on_closing()) and self.bind('<Control-q>', lambda e: self.on_closing()).",
+            "status": "done",
+            "testStrategy": "Test all exit paths: window close button, File menu Exit option, Escape key, and Ctrl+Q shortcut. Verify that cleanup occurs properly in all cases and that the user is prompted to save data when appropriate."
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Implement Main Application Entry Point",
+        "description": "Create the main application entry point to initialize and run the Power Monitor.",
+        "details": "Add the main function to PowerMeter.py:\n\n```python\ndef main():\n    \"\"\"\n    Main entry point for the Power Monitor application.\n    \"\"\"\n    app = PowerMonitor()\n    app.start_monitoring()\n    app.mainloop()\n\nif __name__ == \"__main__\":\n    main()\n```",
+        "testStrategy": "Run the application from the command line using 'python PowerMeter.py' and verify that it starts correctly. Test that the application can be started multiple times without errors.",
+        "priority": "medium",
+        "dependencies": [
+          5,
+          6,
+          7,
+          8
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create PowerMonitor Instance Initialization",
+            "description": "Implement the code to create and initialize a PowerMonitor instance in the main function, ensuring proper instantiation of the application.",
+            "dependencies": [],
+            "details": "Modify the main function to properly instantiate the PowerMonitor class. Ensure error handling is in place to catch any initialization exceptions. Add logging to track application startup. The implementation should include try-except blocks to gracefully handle initialization failures.",
+            "status": "done",
+            "testStrategy": "Test the initialization by running the application and verifying that the PowerMonitor instance is created without errors. Check logs to confirm successful initialization."
+          },
+          {
+            "id": 2,
+            "title": "Implement Start Monitoring Function Call",
+            "description": "Add the code to call the start_monitoring method after PowerMonitor initialization to begin the power monitoring process.",
+            "dependencies": [
+              "9.1"
+            ],
+            "details": "After the PowerMonitor instance is created, call the start_monitoring method to begin collecting power readings. Add error handling to catch and log any exceptions that occur during the monitoring startup. Ensure the method is called only after successful initialization.",
+            "status": "done",
+            "testStrategy": "Verify that the start_monitoring method is called and that power readings begin to appear in the application. Test error scenarios by temporarily modifying the start_monitoring method to throw exceptions."
+          },
+          {
+            "id": 3,
+            "title": "Implement Main Event Loop",
+            "description": "Add the code to start the main event loop (mainloop) to keep the application running and responsive to user interactions.",
+            "dependencies": [
+              "9.2"
+            ],
+            "details": "After starting the monitoring process, call the mainloop method to start the Tkinter event loop. This keeps the application running and responsive to user interactions. Ensure this is the last call in the main function as it blocks until the application is closed.",
+            "status": "done",
+            "testStrategy": "Test that the GUI remains responsive after startup. Verify that user interactions (button clicks, window resizing) work correctly while the application is running."
+          },
+          {
+            "id": 4,
+            "title": "Add Command-Line Entry Point",
+            "description": "Implement the if __name__ == \"__main__\" block to ensure the main function is called only when the script is run directly.",
+            "dependencies": [],
+            "details": "Add the standard Python idiom to check if the script is being run directly (not imported). This ensures the main function is only called when the script is executed as the main program. Include basic command-line argument parsing if needed for future extensibility.",
+            "status": "done",
+            "testStrategy": "Test running the script directly with 'python PowerMeter.py' and verify it starts correctly. Also test importing the module from another script to ensure the main function isn't automatically called."
+          },
+          {
+            "id": 5,
+            "title": "Implement Exception Handling and Graceful Exit",
+            "description": "Add global exception handling to catch any unhandled exceptions in the main function and ensure the application exits gracefully.",
+            "dependencies": [
+              "9.1",
+              "9.2",
+              "9.3",
+              "9.4"
+            ],
+            "details": "Wrap the main function content in a try-except block to catch any unhandled exceptions. Log the exception details and ensure resources are properly cleaned up before exiting. Display a user-friendly error message when exceptions occur. Consider adding a finally block to ensure cleanup happens regardless of how the application exits.",
+            "status": "done",
+            "testStrategy": "Test the application's behavior when exceptions occur by intentionally introducing errors. Verify that error messages are displayed to the user and that the application exits cleanly without leaving resources open."
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Create Documentation and Finalize Project",
+        "description": "Create comprehensive documentation including README.md with usage instructions and finalize the project.",
+        "details": "Create a README.md file with the following content:\n\n```markdown\n# Power Monitor - Keysight N1914A Integration\n\nA desktop application for displaying and visualizing real-time power measurements from a Keysight N1914A USB power meter.\n\n## Features\n\n- Connect to Keysight N1914A via USB\n- Real-time power measurement display\n- Time-series graphing with 60-second window\n- CSV export of measurement data\n- Simulation mode for testing without hardware\n\n## Requirements\n\n- Python 3.7 or higher\n- Keysight IO Libraries Suite installed\n- Required Python packages (see requirements.txt)\n\n## Installation\n\n1. Clone or download this repository\n2. Install required packages:\n   ```\n   pip install -r requirements.txt\n   ```\n3. Connect your Keysight N1914A power meter via USB\n4. Verify the connection using Keysight Connection Expert\n\n## Usage\n\nRun the application:\n\n```\npython PowerMeter.py\n```\n\nThe application will automatically detect your power meter. If no meter is found, it will run in simulation mode.\n\n### Controls\n\n- **Export Data**: Save the current session's power readings to a CSV file\n- **Exit**: Close the application\n\n## Troubleshooting\n\n- If the power meter is not detected, check the USB connection and verify it appears in Keysight Connection Expert\n- Ensure the Keysight IO Libraries Suite is installed and configured correctly\n- If you encounter VISA errors, try restarting the application or reconnecting the device\n\n## Development\n\nThe application includes a simulation mode that can be used for development and testing without physical hardware. This mode is automatically enabled when no power meter is detected.\n```\n\nAlso, ensure the requirements.txt file is complete:\n\n```\npyvisa>=1.11.0\nmatplotlib>=3.5.0\n```",
+        "testStrategy": "Review the README.md for completeness and accuracy. Verify that all installation and usage instructions are clear and correct. Test the installation process on a fresh system following only the instructions in the README.",
+        "priority": "low",
+        "dependencies": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create README.md with Project Overview and Features",
+            "description": "Create the README.md file with project overview, features list, and requirements sections.",
+            "dependencies": [],
+            "details": "Create the README.md file with the following sections:\n1. Project title and brief description\n2. Features list highlighting key capabilities\n3. Requirements section listing necessary software and hardware\n\nEnsure the content accurately reflects the application's capabilities including USB connection, real-time display, graphing, CSV export, and simulation mode.",
+            "status": "pending",
+            "testStrategy": "Review the README.md for clarity and accuracy of the project description, features list, and requirements sections."
+          },
+          {
+            "id": 2,
+            "title": "Add Installation and Setup Instructions to README",
+            "description": "Complete the installation and setup sections of the README with detailed steps.",
+            "dependencies": [
+              "10.1"
+            ],
+            "details": "Add comprehensive installation instructions to the README including:\n1. Repository cloning steps\n2. Package installation using requirements.txt\n3. Hardware connection instructions\n4. Connection verification using Keysight Connection Expert\n\nEnsure instructions are clear enough for users unfamiliar with the system.",
+            "status": "pending",
+            "testStrategy": "Follow the installation instructions on a clean system to verify they are complete and accurate."
+          },
+          {
+            "id": 3,
+            "title": "Document Application Usage and Controls",
+            "description": "Add usage instructions and control descriptions to the README.",
+            "dependencies": [
+              "10.2"
+            ],
+            "details": "Document how to use the application including:\n1. Command to launch the application\n2. Description of automatic device detection and simulation mode\n3. Explanation of all UI controls (Export Data, Exit)\n4. Expected behavior during normal operation\n\nInclude code blocks for commands where appropriate.",
+            "status": "pending",
+            "testStrategy": "Have someone unfamiliar with the project follow the usage instructions to verify clarity and completeness."
+          },
+          {
+            "id": 4,
+            "title": "Create Troubleshooting and Development Sections",
+            "description": "Add troubleshooting guidance and development information to the README.",
+            "dependencies": [
+              "10.3"
+            ],
+            "details": "Create the final sections of the README including:\n1. Troubleshooting section with common issues and solutions\n2. Development section explaining simulation mode for testing\n3. Any additional information developers would need\n\nEnsure troubleshooting covers common connection issues and VISA errors.",
+            "status": "pending",
+            "testStrategy": "Review the troubleshooting section against known issues encountered during development to ensure it addresses likely user problems."
+          },
+          {
+            "id": 5,
+            "title": "Finalize requirements.txt and Project Structure",
+            "description": "Complete and verify the requirements.txt file and ensure the project structure is ready for distribution.",
+            "dependencies": [
+              "10.4"
+            ],
+            "details": "1. Create or update requirements.txt with all necessary dependencies:\n   - pyvisa>=1.11.0\n   - matplotlib>=3.5.0\n   - Any other dependencies identified during development\n\n2. Verify the overall project structure is complete:\n   - All source code files are present and properly organized\n   - README.md is complete and accurate\n   - requirements.txt contains all dependencies with appropriate version constraints\n   - Any additional files needed for distribution are included\n\n3. Perform a final review of all documentation for consistency with the actual implementation.",
+            "status": "pending",
+            "testStrategy": "Test installation from requirements.txt on a fresh environment to verify all dependencies are correctly specified. Review the entire project structure to ensure it's complete and ready for distribution."
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Implement Configurable Data Acquisition Frequency and Time Window",
+        "description": "Add functionality to allow users to configure the data acquisition frequency (sampling rate) and adjust the time window for displaying power readings beyond the default 60 seconds.",
+        "details": "Modify the PowerMonitor class to support configurable data acquisition frequency and time window:\n\n1. Add configuration options to the GUI:\n```python\ndef __init__(self):\n    # Existing initialization code...\n    \n    # Add configuration frame\n    config_frame = ttk.LabelFrame(self, text=\"Configuration\")\n    config_frame.pack(fill=\"x\", padx=10, pady=5)\n    \n    # Acquisition frequency control\n    freq_frame = ttk.Frame(config_frame)\n    freq_frame.pack(fill=\"x\", padx=5, pady=5)\n    ttk.Label(freq_frame, text=\"Acquisition Frequency (Hz):\").pack(side=\"left\")\n    self.freq_var = tk.DoubleVar(value=1.0)  # Default: 1 Hz (once per second)\n    freq_spinner = ttk.Spinbox(freq_frame, from_=0.1, to=10.0, increment=0.1, \n                              textvariable=self.freq_var, width=5)\n    freq_spinner.pack(side=\"left\", padx=5)\n    \n    # Time window control\n    window_frame = ttk.Frame(config_frame)\n    window_frame.pack(fill=\"x\", padx=5, pady=5)\n    ttk.Label(window_frame, text=\"Time Window (seconds):\").pack(side=\"left\")\n    self.window_var = tk.IntVar(value=60)  # Default: 60 seconds\n    window_spinner = ttk.Spinbox(window_frame, from_=10, to=3600, increment=10, \n                                textvariable=self.window_var, width=5)\n    window_spinner.pack(side=\"left\", padx=5)\n    \n    # Apply button\n    ttk.Button(config_frame, text=\"Apply Settings\", \n              command=self.apply_settings).pack(pady=5)\n    \n    # Initialize with default values\n    self.acquisition_interval = 1000  # ms (1 Hz)\n    self.max_data_points = 60  # 60 seconds at 1 Hz\n```\n\n2. Add method to apply new settings:\n```python\ndef apply_settings(self):\n    \"\"\"Apply new acquisition frequency and time window settings.\"\"\"\n    try:\n        # Get values from UI\n        new_freq = self.freq_var.get()\n        new_window = self.window_var.get()\n        \n        # Validate inputs\n        if new_freq <= 0:\n            messagebox.showerror(\"Invalid Input\", \"Frequency must be greater than 0\")\n            return\n        if new_window <= 0:\n            messagebox.showerror(\"Invalid Input\", \"Time window must be greater than 0\")\n            return\n        \n        # Calculate new interval in milliseconds\n        new_interval = int(1000 / new_freq)\n        \n        # Calculate max data points based on frequency and window\n        new_max_points = int(new_window * new_freq)\n        \n        # Update settings\n        self.acquisition_interval = new_interval\n        self.max_data_points = new_max_points\n        \n        # Trim existing data if needed\n        if len(self.power_data) > self.max_data_points:\n            self.power_data = self.power_data[-self.max_data_points:]\n            self.time_data = self.time_data[-self.max_data_points:]\n        \n        # Update plot configuration\n        self.update_plot_config()\n        \n        messagebox.showinfo(\"Settings Applied\", \n                           f\"Acquisition: {new_freq:.1f} Hz\\nTime Window: {new_window} seconds\")\n    except Exception as e:\n        messagebox.showerror(\"Error\", f\"Failed to apply settings: {str(e)}\")\n```\n\n3. Modify the update_power_reading method to use the configurable interval:\n```python\ndef update_power_reading(self):\n    \"\"\"Update power reading and schedule the next update.\"\"\"\n    try:\n        # Existing code for getting power readings...\n        \n        # Store data with timestamp\n        self.power_data.append(power)\n        self.time_data.append(current_time)\n        \n        # Trim data to max_data_points\n        if len(self.power_data) > self.max_data_points:\n            self.power_data.pop(0)\n            self.time_data.pop(0)\n        \n        # Update display and plot\n        self.update_display(power)\n        self.update_plot()\n        \n        # Schedule next update using the configurable interval\n        self.after(self.acquisition_interval, self.update_power_reading)\n    except Exception as e:\n        # Error handling code...\n```\n\n4. Add method to update plot configuration:\n```python\ndef update_plot_config(self):\n    \"\"\"Update plot configuration based on current settings.\"\"\"\n    if hasattr(self, 'ax'):\n        # Calculate time range based on window size\n        time_range = self.window_var.get()\n        \n        # Update x-axis limits\n        self.ax.set_xlim([-time_range, 0])\n        \n        # Update x-axis ticks\n        if time_range <= 60:\n            # For small windows, show ticks every 10 seconds\n            self.ax.set_xticks(range(-time_range, 1, 10))\n        elif time_range <= 300:\n            # For medium windows, show ticks every 30 seconds\n            self.ax.set_xticks(range(-time_range, 1, 30))\n        else:\n            # For large windows, show ticks every minute\n            self.ax.set_xticks(range(-time_range, 1, 60))\n        \n        # Redraw the canvas\n        self.canvas.draw_idle()\n```\n\n5. Update the export_data method to include the configuration settings:\n```python\ndef export_data(self):\n    \"\"\"Export the current power data to a CSV file.\"\"\"\n    if not self.power_data:\n        messagebox.showinfo(\"Export\", \"No data to export.\")\n        return\n    \n    try:\n        # Generate a filename with current timestamp\n        timestamp = datetime.now().strftime(\"%Y%m%d_%H%M%S\")\n        filename = f\"power_data_{timestamp}.csv\"\n        \n        # Ask user for save location\n        file_path = filedialog.asksaveasfilename(\n            defaultextension=\".csv\",\n            initialfile=filename,\n            filetypes=[(\"CSV files\", \"*.csv\"), (\"All files\", \"*.*\")]\n        )\n        \n        if not file_path:\n            return  # User cancelled\n        \n        with open(file_path, 'w', newline='') as csvfile:\n            writer = csv.writer(csvfile)\n            \n            # Write header with configuration information\n            writer.writerow([\"Power Meter Data Export\"])\n            writer.writerow([f\"Acquisition Frequency: {self.freq_var.get()} Hz\"])\n            writer.writerow([f\"Time Window: {self.window_var.get()} seconds\"])\n            writer.writerow([])\n            writer.writerow([\"Timestamp\", \"Power (dBm)\"])\n            \n            # Write data\n            absolute_times = [datetime.fromtimestamp(t).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] \n                             for t in self.time_data]\n            for i in range(len(self.power_data)):\n                writer.writerow([absolute_times[i], f\"{self.power_data[i]:.2f}\"])\n        \n        messagebox.showinfo(\"Export Successful\", f\"Data exported to {file_path}\")\n    except Exception as e:\n        messagebox.showerror(\"Export Error\", f\"Failed to export data: {str(e)}\")\n```",
+        "testStrategy": "1. **Test Configuration UI**:\n   - Verify that the configuration frame appears correctly in the GUI\n   - Test that spinners accept valid inputs and reject invalid ones\n   - Verify that the Apply button is functional\n\n2. **Test Frequency Configuration**:\n   - Set acquisition frequency to 0.5 Hz and verify updates occur every 2 seconds\n   - Set acquisition frequency to 2 Hz and verify updates occur twice per second\n   - Test boundary values (0.1 Hz, 10 Hz) and verify correct behavior\n   - Try entering invalid values (negative numbers, zero) and verify error handling\n\n3. **Test Time Window Configuration**:\n   - Set time window to 30 seconds and verify the graph shows only 30 seconds of data\n   - Set time window to 120 seconds and verify the graph scales appropriately\n   - Verify that existing data is properly trimmed when reducing the time window\n   - Test that the x-axis labels and ticks update correctly for different window sizes\n\n4. **Test Data Management**:\n   - Run the application with a 5-second window at 2 Hz and verify it stores exactly 10 data points\n   - Run with a 300-second window at 0.1 Hz and verify it stores 30 data points\n   - Verify that when the buffer is full, the oldest data points are removed first\n\n5. **Test Export Functionality**:\n   - Export data with different configuration settings\n   - Verify that the exported CSV includes the correct configuration information in the header\n   - Verify that the timestamps and power readings in the CSV match what's displayed in the application\n\n6. **Test Dynamic Reconfiguration**:\n   - Start monitoring with default settings, then change settings while running\n   - Verify that the acquisition rate changes immediately after applying new settings\n   - Verify that the plot rescales correctly when changing the time window\n\n7. **Test Resource Usage**:\n   - Monitor CPU and memory usage at different acquisition rates\n   - Verify that high acquisition rates (e.g., 10 Hz) don't cause performance issues\n   - Test with very long time windows (e.g., 1 hour) to ensure memory management is effective",
+        "status": "done",
+        "dependencies": [
+          5,
+          6,
+          7
+        ],
+        "priority": "medium",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-26T11:52:19.251Z",
+      "updated": "2025-07-26T12:20:48.303Z",
+      "description": "Tasks for master context"
+    }
+  }
+}
