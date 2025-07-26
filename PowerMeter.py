@@ -1,6 +1,8 @@
 import random
 import time
 import csv
+import os
+import json
 from typing import BinaryIO, Optional, List, Tuple
 import threading
 
@@ -12,16 +14,89 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
+# Configuration management
+def get_config_path():
+    """Return the path to the configuration file."""
+    # Store in the same directory as the application
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(app_dir, "config.json")
+
+
+# Default configuration
+DEFAULT_CONFIG = {
+    "device": {
+        "connection_string": ""
+    },
+    "measurement": {
+        "frequency_Hz": 1.0e9,  # 1 GHz
+        "averaging": 1,
+        "unit": "dBm",
+        "trigger_mode": "AUTO",
+        "range": "AUTO",
+        "integration_time_s": 0.1,
+        "channel": 1
+    },
+    "display": {
+        "update_frequency_Hz": 1.0,  # 1 Hz
+        "time_window_s": 60  # 60 seconds
+    }
+}
+
+
+def save_config(config):
+    """Save configuration to JSON file."""
+    try:
+        with open(get_config_path(), 'w') as f:
+            json.dump(config, f, indent=4)
+        return True
+    except Exception as e:
+        print(f"Error saving configuration: {e}")
+        return False
+
+
+def load_config():
+    """Load configuration from JSON file or return defaults if not found."""
+    config_path = get_config_path()
+    
+    if not os.path.exists(config_path):
+        return DEFAULT_CONFIG.copy()
+        
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            
+        # Ensure all required keys exist by merging with defaults
+        merged_config = DEFAULT_CONFIG.copy()
+        
+        # Update with loaded values (only for keys that exist in DEFAULT_CONFIG)
+        for section in DEFAULT_CONFIG:
+            if section in config:
+                for key in DEFAULT_CONFIG[section]:
+                    if key in config[section]:
+                        merged_config[section][key] = config[section][key]
+                        
+        return merged_config
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        return DEFAULT_CONFIG.copy()
+
+
 class PowerMonitor:
     def __init__(self, root):
         self.root = root
+        
+        # Load configuration
+        self.config = load_config()
+        
         self.data: List[Tuple[float, float]] = []
         self.device_connected = False
         self.simulation_mode = False
         self.n1914a = None
         self.rm = None
         self.monitoring = False
-        self.acquisition_frequency_ms = 100  # Default 100ms
+        
+        # Initialize with loaded configuration
+        self.acquisition_frequency_ms = int(self.config["display"]["update_frequency_Hz"] * 1000)  # Convert Hz to ms
         
         # Initialize VISA resource manager
         try:
@@ -39,24 +114,46 @@ class PowerMonitor:
         self.start_monitoring()
 
     def connect_to_device(self) -> bool:
-        try:
-            resources = self.rm.list_resources()
-            if not resources:
+        # Use connection string from config
+        connection_string = self.config["device"]["connection_string"]
+        
+        # If connection string is empty, try to detect device
+        if not connection_string:
+            try:
+                resources = self.rm.list_resources()
+                if not resources:
+                    return False
+                for resource in resources:
+                    try:
+                        instrument = self.rm.open_resource(resource)
+                        identity = instrument.query("*IDN?").strip()
+                        if "N1914A" in identity:
+                            self.n1914a = instrument
+                            self.device_connected = True
+                            # Save successful connection string
+                            self.config["device"]["connection_string"] = resource
+                            save_config(self.config)
+                            return True
+                        instrument.close()
+                    except:
+                        continue
                 return False
-            for resource in resources:
-                try:
-                    instrument = self.rm.open_resource(resource)
-                    identity = instrument.query("*IDN?").strip()
-                    if "N1914A" in identity:
-                        self.n1914a = instrument
-                        self.device_connected = True
-                        return True
-                    instrument.close()
-                except:
-                    continue
-            return False
-        except Exception as e:
-            return False
+            except Exception as e:
+                return False
+        else:
+            # Try to connect using saved connection string
+            try:
+                self.n1914a = self.rm.open_resource(connection_string)
+                identity = self.n1914a.query("*IDN?").strip()
+                if "N1914A" in identity:
+                    self.device_connected = True
+                    return True
+                else:
+                    self.n1914a.close()
+                    self.n1914a = None
+                    return False
+            except Exception as e:
+                return False
 
     def setup_gui(self):
         self.root.title("Power Monitor - Keysight N1914A")
@@ -134,6 +231,9 @@ class PowerMonitor:
             new_freq = int(self.freq_var.get())
             if 100 <= new_freq <= 10000:
                 self.acquisition_frequency_ms = new_freq
+                # Update and save configuration
+                self.config["display"]["update_frequency_Hz"] = new_freq / 1000.0  # Convert ms to Hz
+                save_config(self.config)
                 messagebox.showinfo("Success", f"Acquisition frequency updated to {new_freq}ms")
             else:
                 messagebox.showerror("Error", "Frequency must be between 100ms and 10000ms")
@@ -282,7 +382,7 @@ class PowerMonitor:
         freq_frame = ttk.Frame(config_frame)
         freq_frame.pack(fill=tk.X, pady=5)
         ttk.Label(freq_frame, text="Frequency (Hz):", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
-        freq_var = tk.StringVar(value="1000000000")
+        freq_var = tk.StringVar(value=str(int(self.config["measurement"]["frequency_Hz"])))
         freq_entry = ttk.Entry(freq_frame, textvariable=freq_var, width=20)
         freq_entry.pack(anchor=tk.W, pady=(0, 5))
         ttk.Label(freq_frame, text="Range: 1 Hz to 50 GHz", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
@@ -291,7 +391,7 @@ class PowerMonitor:
         avg_frame = ttk.Frame(config_frame)
         avg_frame.pack(fill=tk.X, pady=5)
         ttk.Label(avg_frame, text="Averaging Count:", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
-        avg_var = tk.StringVar(value="10")
+        avg_var = tk.StringVar(value=str(self.config["measurement"]["averaging"]))
         avg_entry = ttk.Entry(avg_frame, textvariable=avg_var, width=20)
         avg_entry.pack(anchor=tk.W, pady=(0, 5))
         ttk.Label(avg_frame, text="Range: 1 to 1000", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
@@ -300,7 +400,7 @@ class PowerMonitor:
         unit_frame = ttk.Frame(config_frame)
         unit_frame.pack(fill=tk.X, pady=5)
         ttk.Label(unit_frame, text="Measurement Unit:", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
-        unit_var = tk.StringVar(value="W")
+        unit_var = tk.StringVar(value=self.config["measurement"]["unit"])
         unit_combo = ttk.Combobox(unit_frame, textvariable=unit_var, values=["W", "dBm", "dBW"], state="readonly", width=10)
         unit_combo.pack(anchor=tk.W, pady=(0, 5))
         
@@ -308,21 +408,21 @@ class PowerMonitor:
         trigger_frame = ttk.Frame(config_frame)
         trigger_frame.pack(fill=tk.X, pady=5)
         ttk.Label(trigger_frame, text="Trigger Source:", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
-        trigger_var = tk.StringVar(value="IMM")
+        trigger_var = tk.StringVar(value=self.config["measurement"]["trigger_mode"])
         trigger_combo = ttk.Combobox(trigger_frame, textvariable=trigger_var, values=["IMM", "EXT", "BUS"], state="readonly", width=10)
         trigger_combo.pack(anchor=tk.W, pady=(0, 5))
         
         # Auto Range
         autorange_frame = ttk.Frame(config_frame)
         autorange_frame.pack(fill=tk.X, pady=5)
-        autorange_var = tk.BooleanVar(value=True)
+        autorange_var = tk.BooleanVar(value=self.config["measurement"]["range"] == "AUTO")
         ttk.Checkbutton(autorange_frame, text="Auto Range", variable=autorange_var).pack(anchor=tk.W)
         
         # Range (if auto range is off)
         range_frame = ttk.Frame(config_frame)
         range_frame.pack(fill=tk.X, pady=5)
         ttk.Label(range_frame, text="Manual Range (W):", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
-        range_var = tk.StringVar(value="1")
+        range_var = tk.StringVar(value=str(self.config["measurement"]["range"]) if self.config["measurement"]["range"] != "AUTO" else "1")
         range_entry = ttk.Entry(range_frame, textvariable=range_var, width=20)
         range_entry.pack(anchor=tk.W, pady=(0, 5))
         ttk.Label(range_frame, text="Range: 0.1 to 100 W", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
@@ -331,7 +431,7 @@ class PowerMonitor:
         integration_frame = ttk.Frame(config_frame)
         integration_frame.pack(fill=tk.X, pady=5)
         ttk.Label(integration_frame, text="Integration Time (s):", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
-        integration_var = tk.StringVar(value="0.1")
+        integration_var = tk.StringVar(value=str(self.config["measurement"]["integration_time_s"]))
         integration_entry = ttk.Entry(integration_frame, textvariable=integration_var, width=20)
         integration_entry.pack(anchor=tk.W, pady=(0, 5))
         ttk.Label(integration_frame, text="Range: 0.001 to 1.0", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
@@ -369,6 +469,14 @@ class PowerMonitor:
                 range_val = float(range_var.get())
                 integration = float(integration_var.get())
                 
+                # Update configuration
+                self.config["measurement"]["frequency_Hz"] = freq
+                self.config["measurement"]["averaging"] = avg_count
+                self.config["measurement"]["unit"] = unit
+                self.config["measurement"]["trigger_mode"] = trigger
+                self.config["measurement"]["range"] = "AUTO" if autorange else str(range_val)
+                self.config["measurement"]["integration_time_s"] = integration
+                
                 # Set frequency
                 self.n1914a.write(f"SENS:FREQ {freq}")
                 
@@ -393,6 +501,12 @@ class PowerMonitor:
                 
                 # Test the configuration
                 identity = self.n1914a.query("*IDN?").strip()
+                
+                # Save successful connection string
+                self.config["device"]["connection_string"] = resource
+                
+                # Save configuration
+                save_config(self.config)
                 
                 # Update application state
                 self.device_connected = True

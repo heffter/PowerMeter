@@ -697,11 +697,82 @@
         ],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "Implement Persistent Device Configuration",
+        "description": "Implement functionality to save and load user's device and measurement configuration to/from a JSON file, allowing settings to persist between application sessions.",
+        "status": "done",
+        "dependencies": [
+          4,
+          5,
+          6,
+          11
+        ],
+        "priority": "medium",
+        "details": "Implement persistent configuration storage and retrieval:\n\n1. Define the configuration file structure and location:\n```python\ndef get_config_path():\n    \"\"\"Return the path to the configuration file.\"\"\"\n    # Store in the same directory as the application\n    app_dir = os.path.dirname(os.path.abspath(__file__))\n    return os.path.join(app_dir, \"config.json\")\n```\n\n2. Define the default configuration:\n```python\nDEFAULT_CONFIG = {\n    \"device\": {\n        \"connection_string\": \"\"\n    },\n    \"measurement\": {\n        \"frequency_Hz\": 1.0e9,  # 1 GHz\n        \"averaging\": 1,\n        \"unit\": \"dBm\",\n        \"trigger_mode\": \"AUTO\",\n        \"range\": \"AUTO\",\n        \"integration_time_s\": 0.1,\n        \"channel\": 1\n    },\n    \"display\": {\n        \"update_frequency_Hz\": 1.0,  # 1 Hz\n        \"time_window_s\": 60  # 60 seconds\n    }\n}\n```\n\n3. Implement saving configuration:\n```python\ndef save_config(config):\n    \"\"\"Save configuration to JSON file.\"\"\"\n    try:\n        with open(get_config_path(), 'w') as f:\n            json.dump(config, f, indent=4)\n        return True\n    except Exception as e:\n        print(f\"Error saving configuration: {e}\")\n        return False\n```\n\n4. Implement loading configuration:\n```python\ndef load_config():\n    \"\"\"Load configuration from JSON file or return defaults if not found.\"\"\"\n    config_path = get_config_path()\n    \n    if not os.path.exists(config_path):\n        return DEFAULT_CONFIG.copy()\n        \n    try:\n        with open(config_path, 'r') as f:\n            config = json.load(f)\n            \n        # Ensure all required keys exist by merging with defaults\n        merged_config = DEFAULT_CONFIG.copy()\n        \n        # Update with loaded values (only for keys that exist in DEFAULT_CONFIG)\n        for section in DEFAULT_CONFIG:\n            if section in config:\n                for key in DEFAULT_CONFIG[section]:\n                    if key in config[section]:\n                        merged_config[section][key] = config[section][key]\n                        \n        return merged_config\n    except Exception as e:\n        print(f\"Error loading configuration: {e}\")\n        return DEFAULT_CONFIG.copy()\n```\n\n5. Modify the PowerMonitor class to use the configuration:\n```python\ndef __init__(self):\n    super().__init__()\n    \n    # Load configuration\n    self.config = load_config()\n    \n    # Initialize with loaded configuration\n    self.update_frequency = self.config[\"display\"][\"update_frequency_Hz\"]\n    self.max_data_points = self.config[\"display\"][\"time_window_s\"]\n    \n    # Rest of initialization...\n```\n\n6. Update the device connection method to use saved configuration:\n```python\ndef connect_to_device(self):\n    \"\"\"Connect to the power meter using saved configuration.\"\"\"\n    # Use connection string from config\n    connection_string = self.config[\"device\"][\"connection_string\"]\n    \n    # If connection string is empty, try to detect device\n    if not connection_string:\n        self.rm, visa_address = detect_power_meter()\n        if visa_address:\n            self.config[\"device\"][\"connection_string\"] = visa_address\n            save_config(self.config)\n    else:\n        self.rm = pyvisa.ResourceManager()\n        visa_address = connection_string\n    \n    # Connect to device or use simulation\n    if visa_address:\n        try:\n            self.device = self.rm.open_resource(visa_address)\n            # Save successful connection string\n            self.config[\"device\"][\"connection_string\"] = visa_address\n            save_config(self.config)\n            return True\n        except Exception as e:\n            messagebox.showerror(\"Connection Error\", f\"Failed to connect to {visa_address}: {e}\")\n            return False\n    else:\n        return False\n```\n\n7. Update the device configuration dialog to use saved settings:\n```python\ndef show_configure_dialog(self):\n    \"\"\"Show dialog to configure device settings.\"\"\"\n    dialog = tk.Toplevel(self)\n    dialog.title(\"Configure Device\")\n    dialog.geometry(\"400x500\")\n    dialog.resizable(False, False)\n    dialog.transient(self)\n    dialog.grab_set()\n    \n    # Create form with current configuration values\n    ttk.Label(dialog, text=\"Frequency (Hz):\").grid(row=0, column=0, sticky=\"w\", padx=10, pady=5)\n    freq_var = tk.DoubleVar(value=self.config[\"measurement\"][\"frequency_Hz\"])\n    ttk.Entry(dialog, textvariable=freq_var).grid(row=0, column=1, padx=10, pady=5)\n    \n    # Add other configuration fields...\n    \n    def apply_config():\n        # Update configuration with new values\n        self.config[\"measurement\"][\"frequency_Hz\"] = freq_var.get()\n        # Update other configuration values...\n        \n        # Apply configuration to device if connected\n        if hasattr(self, 'device'):\n            try:\n                # Apply settings to device\n                # ...\n                pass\n            except Exception as e:\n                messagebox.showerror(\"Configuration Error\", f\"Failed to configure device: {e}\")\n                return\n        \n        # Save configuration\n        save_config(self.config)\n        dialog.destroy()\n    \n    ttk.Button(dialog, text=\"Apply\", command=apply_config).grid(row=10, column=0, columnspan=2, pady=10)\n    ttk.Button(dialog, text=\"Cancel\", command=dialog.destroy).grid(row=11, column=0, columnspan=2, pady=10)\n```\n\n8. Add necessary imports at the top of the file:\n```python\nimport os\nimport json\n```",
+        "testStrategy": "1. **Test Configuration File Creation**:\n   - Run the application for the first time and verify that the configuration file is created in the same directory as PowerMeter.py.\n   - Check that the file contains the default configuration in valid JSON format.\n\n2. **Test Configuration Saving**:\n   - Change various settings in the application (connection string, frequency, etc.).\n   - Verify that the configuration file is updated with the new values.\n   - Check that only the changed values are updated, not the entire configuration.\n\n3. **Test Configuration Loading**:\n   - Close and reopen the application.\n   - Verify that all previously configured settings are correctly loaded.\n   - Check that the UI elements reflect the loaded configuration.\n\n4. **Test Integration with Device Connection**:\n   - Connect to a device and verify the connection string is saved.\n   - Restart the application and verify it attempts to connect using the saved connection string.\n   - Verify that the connection string is only updated when a successful connection is made.\n\n5. **Test Error Handling**:\n   - Manually corrupt the configuration file with invalid JSON.\n   - Start the application and verify it falls back to default settings.\n   - Check that appropriate error messages are displayed.\n\n6. **Test Configuration Dialog**:\n   - Open the configuration dialog and verify it shows the current settings.\n   - Change settings, apply them, and verify they are saved to the configuration file.\n   - Cancel changes and verify the configuration remains unchanged.\n\n7. **Test with Missing Configuration**:\n   - Delete the configuration file.\n   - Start the application and verify it creates a new file with default settings.\n   - Check that the application functions normally.\n\n8. **Test with Different Devices**:\n   - If possible, connect different supported devices and verify the configuration is updated accordingly.\n   - Check that device-specific settings are correctly saved and loaded.\n   - Verify that the connection string is properly saved after successful connections.",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Configuration File Structure and Default Configuration",
+            "description": "Define the configuration file structure, location, and default configuration values that will be used when no saved configuration exists.",
+            "dependencies": [],
+            "details": "Implement the get_config_path() function to determine where the configuration file should be stored. Define the DEFAULT_CONFIG dictionary with all necessary default values for device connection, measurement parameters, and display settings. This will serve as the foundation for the configuration persistence system.",
+            "status": "done",
+            "testStrategy": "Verify that get_config_path() returns a valid file path in the application directory. Check that DEFAULT_CONFIG contains all required configuration parameters with appropriate default values."
+          },
+          {
+            "id": 2,
+            "title": "Implement Configuration Loading Functionality",
+            "description": "Create functionality to load configuration from the JSON file or return defaults if the file doesn't exist or is invalid.",
+            "dependencies": [
+              "12.1"
+            ],
+            "details": "Implement the load_config() function that attempts to read the configuration file from the path returned by get_config_path(). Handle cases where the file doesn't exist by returning the default configuration. When loading an existing configuration, ensure all required keys exist by merging with defaults, preserving user settings while adding any missing default values.",
+            "status": "done",
+            "testStrategy": "Test loading when no configuration file exists to verify defaults are returned. Test loading with a valid configuration file to verify settings are correctly loaded. Test with a partial configuration file to verify proper merging with defaults."
+          },
+          {
+            "id": 3,
+            "title": "Implement Configuration Saving Functionality",
+            "description": "Create functionality to save the current configuration to a JSON file.",
+            "dependencies": [
+              "12.1"
+            ],
+            "details": "Implement the save_config() function that writes the provided configuration dictionary to the JSON file at the path returned by get_config_path(). Include proper error handling to catch and report any issues that occur during the save process. Format the JSON with indentation for better readability if users need to manually edit the file.",
+            "status": "done",
+            "testStrategy": "Test saving a configuration and verify the file is created with the correct content. Test error handling by attempting to save to a location without write permissions."
+          },
+          {
+            "id": 4,
+            "title": "Modify PowerMonitor Class to Use Configuration",
+            "description": "Update the PowerMonitor class to load configuration at startup and use the loaded values for initialization.",
+            "dependencies": [
+              "12.2",
+              "12.3"
+            ],
+            "details": "Modify the PowerMonitor.__init__() method to load configuration at startup using load_config(). Update the initialization of class attributes to use values from the loaded configuration instead of hardcoded values. This includes display settings like update_frequency and max_data_points.",
+            "status": "done",
+            "testStrategy": "Test that the application correctly initializes with values from an existing configuration file. Verify that changing the configuration file between application restarts results in the new settings being applied."
+          },
+          {
+            "id": 5,
+            "title": "Implement Device Connection and Configuration Dialog with Persistence",
+            "description": "Update the device connection method and configuration dialog to use and update the saved configuration.",
+            "dependencies": [
+              "12.4"
+            ],
+            "details": "Modify connect_to_device() to use the connection string from the configuration, with fallback to device detection if empty. Update the configuration when a successful connection is made. Implement or update show_configure_dialog() to display current configuration values from the config dictionary and save changes back to the configuration file when applied. Ensure all UI elements reflect the current configuration values.",
+            "status": "done",
+            "testStrategy": "Test that the connection string is saved after a successful connection and reused on next startup. Test that changes made in the configuration dialog are correctly saved to the configuration file and applied to the application."
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-07-26T11:52:19.251Z",
-      "updated": "2025-07-26T12:20:48.303Z",
+      "updated": "2025-07-26T17:25:30.384Z",
       "description": "Tasks for master context"
     }
   }
