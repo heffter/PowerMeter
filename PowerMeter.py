@@ -34,7 +34,8 @@ DEFAULT_CONFIG = {
         "trigger_mode": "AUTO",
         "range": "AUTO",
         "integration_time_s": 0.1,
-        "channel": 1
+        "channel_a": 1,
+        "channel_b": 2
     },
     "display": {
         "update_frequency_Hz": 1.0,  # 1 Hz
@@ -88,7 +89,8 @@ class PowerMonitor:
         # Load configuration
         self.config = load_config()
         
-        self.data: List[Tuple[float, float]] = []
+        # Data structure for both channels: (timestamp, forward_power, reflected_power)
+        self.data: List[Tuple[float, float, float]] = []
         self.device_connected = False
         self.simulation_mode = False
         self.n1914a = None
@@ -189,11 +191,24 @@ class PowerMonitor:
         # Current power display
         current_frame = ttk.Frame(main_frame, style='Card.TFrame')
         current_frame.pack(fill=tk.X, pady=10, ipadx=10, ipady=10)
-        ttk.Label(current_frame, text="CURRENT POWER:",
+        
+        # Forward Power (Channel A)
+        forward_frame = ttk.Frame(current_frame)
+        forward_frame.pack(side=tk.LEFT, padx=(0, 20))
+        ttk.Label(forward_frame, text="FORWARD POWER:",
                   font=('Helvetica', 10), foreground='#6c757d').pack(side=tk.LEFT)
-        self.current_power_var = tk.StringVar(value="0.00 W")
-        ttk.Label(current_frame, textvariable=self.current_power_var,
+        self.forward_power_var = tk.StringVar(value="0.00 W")
+        ttk.Label(forward_frame, textvariable=self.forward_power_var,
                   font=('Helvetica', 28, 'bold'), foreground='#2c7be5').pack(side=tk.LEFT, padx=10)
+        
+        # Reflected Power (Channel B)
+        reflected_frame = ttk.Frame(current_frame)
+        reflected_frame.pack(side=tk.LEFT)
+        ttk.Label(reflected_frame, text="REFLECTED POWER:",
+                  font=('Helvetica', 10), foreground='#6c757d').pack(side=tk.LEFT)
+        self.reflected_power_var = tk.StringVar(value="0.00 W")
+        ttk.Label(reflected_frame, textvariable=self.reflected_power_var,
+                  font=('Helvetica', 28, 'bold'), foreground='#dc3545').pack(side=tk.LEFT, padx=10)
 
         # Graph frame
         graph_frame = ttk.Frame(main_frame, style='Card.TFrame')
@@ -480,23 +495,28 @@ class PowerMonitor:
                 # Set frequency
                 self.n1914a.write(f"SENS:FREQ {freq}")
                 
-                # Set averaging
+                # Configure Channel A (Forward Power)
+                self.n1914a.write(":SENS:CHAN 1")
                 self.n1914a.write(f"SENS:AVER:COUN {avg_count}")
-                
-                # Set measurement unit
                 self.n1914a.write(f"UNIT:POW {unit}")
-                
-                # Set trigger source
                 self.n1914a.write(f"TRIG:SOUR {trigger}")
-                
-                # Set auto range
                 if autorange:
                     self.n1914a.write("SENS:POW:RANG:AUTO ON")
                 else:
                     self.n1914a.write("SENS:POW:RANG:AUTO OFF")
                     self.n1914a.write(f"SENS:POW:RANG {range_val}")
+                self.n1914a.write(f"SENS:POW:INT {integration}")
                 
-                # Set integration time
+                # Configure Channel B (Reflected Power)
+                self.n1914a.write(":SENS:CHAN 2")
+                self.n1914a.write(f"SENS:AVER:COUN {avg_count}")
+                self.n1914a.write(f"UNIT:POW {unit}")
+                self.n1914a.write(f"TRIG:SOUR {trigger}")
+                if autorange:
+                    self.n1914a.write("SENS:POW:RANG:AUTO ON")
+                else:
+                    self.n1914a.write("SENS:POW:RANG:AUTO OFF")
+                    self.n1914a.write(f"SENS:POW:RANG {range_val}")
                 self.n1914a.write(f"SENS:POW:INT {integration}")
                 
                 # Test the configuration
@@ -527,23 +547,42 @@ class PowerMonitor:
         # Initialize device scan
         scan_devices()
 
-    def generate_power_reading(self) -> float:
-        base = 800 + random.uniform(-100, 100)
-        drift = random.uniform(-10, 10)
-        spike = random.random() > 0.95
-        noise = random.uniform(-20, 20)
-        result = base + drift + noise
-        if spike:
-            result *= 1.5
-        return round(max(0, result), 2)
+    def generate_power_reading(self) -> Tuple[float, float]:
+        # Generate forward power (Channel A)
+        forward_base = 800 + random.uniform(-100, 100)
+        forward_drift = random.uniform(-10, 10)
+        forward_spike = random.random() > 0.95
+        forward_noise = random.uniform(-20, 20)
+        forward_result = forward_base + forward_drift + forward_noise
+        if forward_spike:
+            forward_result *= 1.5
+        
+        # Generate reflected power (Channel B) - typically lower than forward
+        reflected_base = 50 + random.uniform(-20, 20)
+        reflected_drift = random.uniform(-5, 5)
+        reflected_spike = random.random() > 0.98
+        reflected_noise = random.uniform(-10, 10)
+        reflected_result = reflected_base + reflected_drift + reflected_noise
+        if reflected_spike:
+            reflected_result *= 2.0
+        
+        return (round(max(0, forward_result), 2), round(max(0, reflected_result), 2))
 
-    def read_n1914a_power(self) -> Optional[float]:
+    def read_n1914a_power(self) -> Optional[Tuple[float, float]]:
         if not self.n1914a or not self.device_connected:
             return None
         try:
+            # Read from Channel A (Forward Power)
+            self.n1914a.write(":SENS:CHAN 1")
             self.n1914a.write(":INITiate:CONTinuous 1")
-            power_value = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
-            return float(power_value)
+            forward_power = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
+            
+            # Read from Channel B (Reflected Power)
+            self.n1914a.write(":SENS:CHAN 2")
+            self.n1914a.write(":INITiate:CONTinuous 1")
+            reflected_power = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
+            
+            return (float(forward_power), float(reflected_power))
         except Exception as e:
             self.device_connected = False
             return None
@@ -564,31 +603,51 @@ class PowerMonitor:
                 self.simulation_mode = True
                 power = self.generate_power_reading()
                 self.update_status_display()
-        self.data.append((timestamp, power))
+        self.data.append((timestamp, power[0], power[1])) # Append forward and reflected power
         cutoff_time = timestamp - 60.0
-        self.data = [(t, p) for t, p in self.data if t >= cutoff_time]
+        self.data = [(t, f, r) for t, f, r in self.data if t >= cutoff_time]
         self.update_gui()
         self.root.after(self.acquisition_frequency_ms, self.update_data)
 
     def update_gui(self):
         if not self.data:
             return
-        _, current = self.data[-1]
-        self.current_power_var.set(f"{current:.2f} W")
+        _, current_forward, current_reflected = self.data[-1]
+        self.forward_power_var.set(f"{current_forward:.2f} W")
+        self.reflected_power_var.set(f"{current_reflected:.2f} W")
         self.ax.clear()
-        timestamps = [datetime.fromtimestamp(ts) for ts, _ in self.data]
-        powers = [p for _, p in self.data]
-        line = self.ax.plot(timestamps, powers,
-                            color='#2c7be5',
-                            linewidth=2.5,
-                            alpha=0.8,
-                            marker='o',
-                            markersize=5,
-                            markerfacecolor='#ffffff',
-                            markeredgecolor='#2c7be5',
-                            markeredgewidth=1.5,
-                            zorder=3)[0]
-        self.ax.fill_between(timestamps, powers, color='#2c7be5', alpha=0.1)
+        timestamps = [datetime.fromtimestamp(ts) for ts, _, _ in self.data]
+        forward_powers = [f for _, f, _ in self.data]
+        reflected_powers = [r for _, _, r in self.data]
+        
+        # Plot Forward Power
+        forward_line = self.ax.plot(timestamps, forward_powers,
+                                    color='#2c7be5',
+                                    linewidth=2.5,
+                                    alpha=0.8,
+                                    marker='o',
+                                    markersize=5,
+                                    markerfacecolor='#ffffff',
+                                    markeredgecolor='#2c7be5',
+                                    markeredgewidth=1.5,
+                                    zorder=3,
+                                    label='Forward Power')[0]
+        self.ax.fill_between(timestamps, forward_powers, color='#2c7be5', alpha=0.1)
+        
+        # Plot Reflected Power
+        reflected_line = self.ax.plot(timestamps, reflected_powers,
+                                     color='#dc3545',
+                                     linewidth=2.5,
+                                     alpha=0.8,
+                                     marker='s',
+                                     markersize=5,
+                                     markerfacecolor='#ffffff',
+                                     markeredgecolor='#dc3545',
+                                     markeredgewidth=1.5,
+                                     zorder=3,
+                                     label='Reflected Power')[0]
+        self.ax.fill_between(timestamps, reflected_powers, color='#dc3545', alpha=0.1)
+
         self.ax.set_title('Real-Time Power Measurement - Keysight N1914A',
                           fontsize=12,
                           fontweight='bold',
@@ -603,12 +662,18 @@ class PowerMonitor:
         self.ax.grid(True, linestyle=':', alpha=0.6, color='#e9ecef')
         for spine in ['top', 'right', 'left', 'bottom']:
             self.ax.spines[spine].set_color('#e9ecef')
-        if len(powers) > 0:
-            y_padding = max(50, (max(powers) - min(powers)) * 0.2)
-            self.ax.set_ylim(
-                max(0, min(powers) - y_padding),
-                max(powers) + y_padding
-            )
+        
+        # Add legend
+        self.ax.legend(loc='upper right', framealpha=0.9, fancybox=True, shadow=True)
+        
+        if len(forward_powers) > 0 or len(reflected_powers) > 0:
+            all_powers = forward_powers + reflected_powers
+            if all_powers:
+                y_padding = max(50, (max(all_powers) - min(all_powers)) * 0.2)
+                self.ax.set_ylim(
+                    max(0, min(all_powers) - y_padding),
+                    max(all_powers) + y_padding
+                )
         self.figure.tight_layout()
         self.canvas.draw()
 
@@ -626,13 +691,14 @@ class PowerMonitor:
         try:
             with open(filename, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['Timestamp', 'Epoch Time', 'Power (W)', 'Mode'])
-                for ts, power in self.data:
+                writer.writerow(['Timestamp', 'Epoch Time', 'Forward Power (W)', 'Reflected Power (W)', 'Mode'])
+                for ts, f, r in self.data:
                     mode = "Simulation" if self.simulation_mode else "Real Device"
                     writer.writerow([
                         datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S'),
                         f"{ts:.3f}",
-                        power,
+                        f,
+                        r,
                         mode
                     ])
             messagebox.showinfo("Success", f"Data exported to {filename}")
