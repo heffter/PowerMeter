@@ -410,6 +410,8 @@ class PowerMonitor:
                    style='Accent.TButton', command=self.export_csv).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Configure Device",
                    command=self.configure_device).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Debug Channels",
+                   command=self.debug_channels).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Exit",
                    command=self.cleanup_and_exit).pack(side=tk.RIGHT, padx=5)
 
@@ -750,29 +752,31 @@ class PowerMonitor:
                 # Set frequency
                 self.n1914a.write(f"SENS:FREQ {freq}")
                 
-                # Configure Channel A (Forward Power)
-                self.n1914a.write(":INSTrument:SELect A")
-                self.n1914a.write(f"SENS:AVER:COUN {avg_count}")
-                self.n1914a.write(f"UNIT:POW {unit}")
-                self.n1914a.write(f"TRIG:SOUR {trigger}")
-                if autorange:
-                    self.n1914a.write("SENS:POW:RANG:AUTO ON")
-                else:
-                    self.n1914a.write("SENS:POW:RANG:AUTO OFF")
-                    self.n1914a.write(f"SENS:POW:RANG {range_val}")
-                self.n1914a.write(f"SENS:POW:INT {integration}")
+                # Set continuous measurement mode for both channels
+                self.n1914a.write(":INITiate1:CONTinuous ON")
+                self.n1914a.write(":INITiate2:CONTinuous ON")
                 
-                # Configure Channel B (Reflected Power)
-                self.n1914a.write(":INSTrument:SELect B")
-                self.n1914a.write(f"SENS:AVER:COUN {avg_count}")
-                self.n1914a.write(f"UNIT:POW {unit}")
-                self.n1914a.write(f"TRIG:SOUR {trigger}")
+                # Configure Channel 1 (Forward Power) - using correct SCPI commands from programming guide
+                self.n1914a.write(f"SENS1:AVER:COUN {avg_count}")
+                self.n1914a.write(f"SENS1:UNIT:POW {unit}")
+                self.n1914a.write(f"SENS1:TRIG:SOUR {trigger}")
                 if autorange:
-                    self.n1914a.write("SENS:POW:RANG:AUTO ON")
+                    self.n1914a.write("SENS1:POW:RANG:AUTO ON")
                 else:
-                    self.n1914a.write("SENS:POW:RANG:AUTO OFF")
-                    self.n1914a.write(f"SENS:POW:RANG {range_val}")
-                self.n1914a.write(f"SENS:POW:INT {integration}")
+                    self.n1914a.write("SENS1:POW:RANG:AUTO OFF")
+                    self.n1914a.write(f"SENS1:POW:RANG {range_val}")
+                self.n1914a.write(f"SENS1:POW:INT {integration}")
+                
+                # Configure Channel 2 (Reflected Power) - using correct SCPI commands from programming guide
+                self.n1914a.write(f"SENS2:AVER:COUN {avg_count}")
+                self.n1914a.write(f"SENS2:UNIT:POW {unit}")
+                self.n1914a.write(f"SENS2:TRIG:SOUR {trigger}")
+                if autorange:
+                    self.n1914a.write("SENS2:POW:RANG:AUTO ON")
+                else:
+                    self.n1914a.write("SENS2:POW:RANG:AUTO OFF")
+                    self.n1914a.write(f"SENS2:POW:RANG {range_val}")
+                self.n1914a.write(f"SENS2:POW:INT {integration}")
                 
                 # Test the configuration
                 identity = self.n1914a.query("*IDN?").strip()
@@ -857,21 +861,70 @@ class PowerMonitor:
         if reflected_spike:
             reflected_result *= 2.0
         
-        return (round(max(0, forward_result), 2), round(max(0, reflected_result), 2))
+                    return (round(max(0, forward_result), 2), round(max(0, reflected_result), 2))
+
+    def debug_channels(self):
+        """Debug method to test correct SCPI commands for channel selection"""
+        if not self.n1914a or not self.device_connected:
+            messagebox.showerror("Error", "No device connected")
+            return
+        
+        try:
+            print("\n=== DEBUGGING CHANNEL SELECTION ===")
+            
+            # Test 1: Using correct FETCh commands from programming guide
+            print("\nTest 1: FETCh1 and FETCh2 (correct commands)")
+            power_1 = self.n1914a.query_ascii_values(":FETCh1:SCALar:POWer:AC?")[0]
+            print(f"Channel 1 power: {power_1}")
+            
+            power_2 = self.n1914a.query_ascii_values(":FETCh2:SCALar:POWer:AC?")[0]
+            print(f"Channel 2 power: {power_2}")
+            
+            # Test 2: Using READ commands
+            print("\nTest 2: READ1 and READ2")
+            power_1_read = self.n1914a.query_ascii_values(":READ1:SCALar:POWer:AC?")[0]
+            print(f"Channel 1 (READ): {power_1_read}")
+            
+            power_2_read = self.n1914a.query_ascii_values(":READ2:SCALar:POWer:AC?")[0]
+            print(f"Channel 2 (READ): {power_2_read}")
+            
+            # Test 3: Check device capabilities
+            print("\nTest 3: Device capabilities")
+            try:
+                idn = self.n1914a.query("*IDN?").strip()
+                print(f"Device ID: {idn}")
+            except:
+                print("Could not get device ID")
+            
+            # Summary
+            print("\n=== SUMMARY ===")
+            print(f"FETCh - Ch1: {power_1}, Ch2: {power_2}, Diff: {abs(float(power_1) - float(power_2))}")
+            print(f"READ - Ch1: {power_1_read}, Ch2: {power_2_read}, Diff: {abs(float(power_1_read) - float(power_2_read))}")
+            
+            # Show results in GUI
+            messagebox.showinfo("Debug Results", 
+                              f"Debug completed. Check console for details.\n\n"
+                              f"FETCh - Ch1: {power_1}, Ch2: {power_2}\n"
+                              f"READ - Ch1: {power_1_read}, Ch2: {power_2_read}\n"
+                              f"Difference: {abs(float(power_1) - float(power_2)):.3f} W")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Debug failed: {str(e)}")
+            print(f"Debug error: {e}")
 
     def read_n1914a_power(self) -> Optional[Tuple[float, float]]:
         if not self.n1914a or not self.device_connected:
             return None
         try:
-            # Read from Channel A (Forward Power)
-            self.n1914a.write(":INSTrument:SELect A")  # select Channel A
-            self.n1914a.write(":INITiate:CONTinuous 1")
-            forward_power = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
+            # Set continuous measurement mode for both channels
+            self.n1914a.write(":INITiate1:CONTinuous ON")
+            self.n1914a.write(":INITiate2:CONTinuous ON")
             
-            # Read from Channel B (Reflected Power)
-            self.n1914a.write(":INSTrument:SELect B")  # select Channel B
-            self.n1914a.write(":INITiate:CONTinuous 1")
-            reflected_power = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
+            # Read from Channel 1 (Forward Power) - using correct SCPI commands from programming guide
+            forward_power = self.n1914a.query_ascii_values(":FETCh1:SCALar:POWer:AC?")[0]
+            
+            # Read from Channel 2 (Reflected Power) - using correct SCPI commands from programming guide
+            reflected_power = self.n1914a.query_ascii_values(":FETCh2:SCALar:POWer:AC?")[0]
             
             return (float(forward_power), float(reflected_power))
         except Exception as e:
