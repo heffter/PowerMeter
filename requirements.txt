@@ -1,2 +1,5 @@
 pyvisa>=1.11.0
-matplotlib>=3.5.0 
+matplotlib>=3.5.0
+flask>=2.3.0
+flask-cors>=4.0.0
+requests>=2.25.0 

@@ -12,6 +12,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 
 # Configuration management
@@ -43,6 +45,11 @@ DEFAULT_CONFIG = {
         "auto_scale": True,
         "y_min": 0,
         "y_max": 1000
+    },
+    "api_server": {
+        "enabled": False,
+        "port": 5000,
+        "host": "0.0.0.0"
     }
 }
 
@@ -100,6 +107,11 @@ class PowerMonitor:
         self.rm = None
         self.monitoring = False
         
+        # API Server state
+        self.api_server = None
+        self.api_thread = None
+        self.api_running = False
+        
         # Initialize with loaded configuration
         self.acquisition_frequency_ms = int(self.config["display"]["update_frequency_Hz"] * 1000)  # Convert Hz to ms
         
@@ -117,6 +129,144 @@ class PowerMonitor:
         self.setup_gui()
         self.setup_cleanup()
         self.start_monitoring()
+        
+        # Start API server if enabled in config
+        if self.config["api_server"]["enabled"]:
+            self.start_api_server()
+
+    def setup_api_server(self):
+        """Setup Flask API server with routes"""
+        self.api_server = Flask(__name__)
+        CORS(self.api_server)
+        
+        @self.api_server.route('/api/status', methods=['GET'])
+        def get_status():
+            return jsonify({
+                'device_connected': self.device_connected,
+                'simulation_mode': self.simulation_mode,
+                'monitoring': self.monitoring,
+                'acquisition_frequency_ms': self.acquisition_frequency_ms,
+                'data_points': len(self.data)
+            })
+        
+        @self.api_server.route('/api/current', methods=['GET'])
+        def get_current_power():
+            if not self.data:
+                return jsonify({
+                    'timestamp': time.time(),
+                    'forward_power': 0.0,
+                    'reflected_power': 0.0
+                })
+            
+            timestamp, forward_power, reflected_power = self.data[-1]
+            return jsonify({
+                'timestamp': timestamp,
+                'forward_power': forward_power,
+                'reflected_power': reflected_power
+            })
+        
+        @self.api_server.route('/api/history', methods=['GET'])
+        def get_power_history():
+            limit = request.args.get('limit', type=int, default=100)
+            limit = min(limit, len(self.data))
+            
+            if limit <= 0:
+                return jsonify([])
+            
+            recent_data = self.data[-limit:]
+            return jsonify([{
+                'timestamp': ts,
+                'forward_power': fp,
+                'reflected_power': rp
+            } for ts, fp, rp in recent_data])
+        
+        @self.api_server.route('/api/devices', methods=['GET'])
+        def list_devices():
+            try:
+                resources = self.rm.list_resources()
+                devices = []
+                
+                for resource in resources:
+                    try:
+                        instrument = self.rm.open_resource(resource)
+                        identity = instrument.query("*IDN?").strip()
+                        instrument.close()
+                        devices.append({
+                            'resource': resource,
+                            'identity': identity,
+                            'is_n1914a': 'N1914A' in identity
+                        })
+                    except:
+                        devices.append({
+                            'resource': resource,
+                            'identity': 'Unknown/Error',
+                            'is_n1914a': False
+                        })
+                
+                return jsonify({
+                    'success': True,
+                    'devices': devices
+                })
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'message': f'Failed to list devices: {str(e)}'
+                }), 500
+
+    def start_api_server(self):
+        """Start the API server in a separate thread"""
+        if self.api_running:
+            return
+        
+        try:
+            self.setup_api_server()
+            host = self.config["api_server"]["host"]
+            port = self.config["api_server"]["port"]
+            
+            def run_server():
+                self.api_server.run(host=host, port=port, debug=False, use_reloader=False)
+            
+            self.api_thread = threading.Thread(target=run_server, daemon=True)
+            self.api_thread.start()
+            self.api_running = True
+            
+            print(f"API Server started on {host}:{port}")
+            
+        except Exception as e:
+            print(f"Failed to start API server: {e}")
+            messagebox.showerror("API Server Error", f"Failed to start API server: {str(e)}")
+
+    def stop_api_server(self):
+        """Stop the API server"""
+        if not self.api_running:
+            return
+        
+        try:
+            # Flask doesn't have a clean shutdown method, so we'll just mark it as stopped
+            self.api_running = False
+            self.api_server = None
+            self.api_thread = None
+            print("API Server stopped")
+            
+        except Exception as e:
+            print(f"Error stopping API server: {e}")
+
+    def toggle_api_server(self):
+        """Toggle the API server on/off"""
+        if self.api_running:
+            self.stop_api_server()
+            self.config["api_server"]["enabled"] = False
+            self.api_toggle_btn.config(text="Start API Server")
+            messagebox.showinfo("API Server", "API Server stopped")
+        else:
+            self.start_api_server()
+            if self.api_running:
+                self.config["api_server"]["enabled"] = True
+                self.api_toggle_btn.config(text="Stop API Server")
+                messagebox.showinfo("API Server", f"API Server started on port {self.config['api_server']['port']}")
+        
+        save_config(self.config)
 
     def connect_to_device(self) -> bool:
         # Use connection string from config
@@ -179,6 +329,12 @@ class PowerMonitor:
         self.toggle_btn = ttk.Button(control_right, text="Connect to Device",
                                     command=self.toggle_simulation_mode)
         self.toggle_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # API Server toggle button
+        api_button_text = "Stop API Server" if self.config["api_server"]["enabled"] else "Start API Server"
+        self.api_toggle_btn = ttk.Button(control_right, text=api_button_text,
+                                        command=self.toggle_api_server)
+        self.api_toggle_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         # Acquisition frequency control
         freq_frame = ttk.Frame(main_frame)
@@ -522,6 +678,34 @@ class PowerMonitor:
         integration_entry.pack(anchor=tk.W, pady=(0, 5))
         ttk.Label(integration_frame, text="Range: 0.001 to 1.0", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
         
+        # API Server Configuration Section
+        api_frame = ttk.LabelFrame(scrollable_frame, text="API Server Configuration", padding=10)
+        api_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # API Server Enable/Disable
+        api_enable_frame = ttk.Frame(api_frame)
+        api_enable_frame.pack(fill=tk.X, pady=5)
+        api_enable_var = tk.BooleanVar(value=self.config["api_server"]["enabled"])
+        ttk.Checkbutton(api_enable_frame, text="Enable REST API Server", variable=api_enable_var).pack(anchor=tk.W)
+        
+        # API Server Port
+        api_port_frame = ttk.Frame(api_frame)
+        api_port_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(api_port_frame, text="API Server Port:", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
+        api_port_var = tk.StringVar(value=str(self.config["api_server"]["port"]))
+        api_port_entry = ttk.Entry(api_port_frame, textvariable=api_port_var, width=20)
+        api_port_entry.pack(anchor=tk.W, pady=(0, 5))
+        ttk.Label(api_port_frame, text="Range: 1024 to 65535", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
+        
+        # API Server Host
+        api_host_frame = ttk.Frame(api_frame)
+        api_host_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(api_host_frame, text="API Server Host:", font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
+        api_host_var = tk.StringVar(value=self.config["api_server"]["host"])
+        api_host_entry = ttk.Entry(api_host_frame, textvariable=api_host_var, width=20)
+        api_host_entry.pack(anchor=tk.W, pady=(0, 5))
+        ttk.Label(api_host_frame, text="Use '0.0.0.0' for all interfaces, '127.0.0.1' for localhost only", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
+        
         # Apply Configuration Section
         apply_frame = ttk.LabelFrame(scrollable_frame, text="Apply Configuration", padding=10)
         apply_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -595,6 +779,43 @@ class PowerMonitor:
                 
                 # Save successful connection string
                 self.config["device"]["connection_string"] = resource
+                
+                # Handle API Server configuration
+                api_enabled = api_enable_var.get()
+                api_port = int(api_port_var.get())
+                api_host = api_host_var.get()
+                
+                # Validate API server settings
+                if api_enabled:
+                    if not (1024 <= api_port <= 65535):
+                        messagebox.showerror("Error", "API Server port must be between 1024 and 65535")
+                        return
+                    if not api_host:
+                        messagebox.showerror("Error", "API Server host cannot be empty")
+                        return
+                
+                # Update API server configuration
+                self.config["api_server"]["enabled"] = api_enabled
+                self.config["api_server"]["port"] = api_port
+                self.config["api_server"]["host"] = api_host
+                
+                # Restart API server if configuration changed
+                if self.api_running:
+                    self.stop_api_server()
+                    if api_enabled:
+                        self.start_api_server()
+                        if self.api_running:
+                            self.api_toggle_btn.config(text="Stop API Server")
+                        else:
+                            self.config["api_server"]["enabled"] = False
+                            api_enable_var.set(False)
+                elif api_enabled:
+                    self.start_api_server()
+                    if self.api_running:
+                        self.api_toggle_btn.config(text="Stop API Server")
+                    else:
+                        self.config["api_server"]["enabled"] = False
+                        api_enable_var.set(False)
                 
                 # Save configuration
                 save_config(self.config)
@@ -823,6 +1044,7 @@ class PowerMonitor:
 
     def cleanup_and_exit(self):
         self.monitoring = False
+        self.stop_api_server()  # Stop API server
         if self.n1914a:
             try:
                 self.n1914a.close()
