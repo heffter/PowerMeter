@@ -861,7 +861,7 @@ class PowerMonitor:
         if reflected_spike:
             reflected_result *= 2.0
         
-                    return (round(max(0, forward_result), 2), round(max(0, reflected_result), 2))
+        return (round(max(0, forward_result), 2), round(max(0, reflected_result), 2))
 
     def debug_channels(self):
         """Debug method to test correct SCPI commands for channel selection"""
