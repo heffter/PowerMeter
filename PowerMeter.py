@@ -39,7 +39,10 @@ DEFAULT_CONFIG = {
     },
     "display": {
         "update_frequency_Hz": 1.0,  # 1 Hz
-        "time_window_s": 60  # 60 seconds
+        "time_window_s": 60,  # 60 seconds
+        "auto_scale": True,
+        "y_min": 0,
+        "y_max": 1000
     }
 }
 
@@ -186,7 +189,30 @@ class PowerMonitor:
                                        textvariable=self.freq_var, width=10,
                                        command=self.update_acquisition_frequency)
         self.freq_spinbox.pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(freq_frame, text="Apply", command=self.update_acquisition_frequency).pack(side=tk.LEFT)
+        ttk.Button(freq_frame, text="Apply", command=self.update_acquisition_frequency).pack(side=tk.LEFT, padx=(0, 20))
+        
+        # Y-axis scaling control
+        ttk.Label(freq_frame, text="Y-Axis Auto-Scale:").pack(side=tk.LEFT, padx=(0, 5))
+        self.auto_scale_var = tk.BooleanVar(value=self.config["display"]["auto_scale"])
+        self.auto_scale_check = ttk.Checkbutton(freq_frame, text="Enabled", variable=self.auto_scale_var,
+                                               command=self.toggle_auto_scale)
+        self.auto_scale_check.pack(side=tk.LEFT)
+        
+        # Manual Y-axis range controls (initially hidden)
+        self.manual_scale_frame = ttk.Frame(freq_frame)
+        ttk.Label(self.manual_scale_frame, text="Y-Min:").pack(side=tk.LEFT, padx=(0, 2))
+        self.y_min_var = tk.StringVar(value=str(self.config["display"]["y_min"]))
+        self.y_min_entry = ttk.Entry(self.manual_scale_frame, textvariable=self.y_min_var, width=8)
+        self.y_min_entry.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(self.manual_scale_frame, text="Y-Max:").pack(side=tk.LEFT, padx=(0, 2))
+        self.y_max_var = tk.StringVar(value=str(self.config["display"]["y_max"]))
+        self.y_max_entry = ttk.Entry(self.manual_scale_frame, textvariable=self.y_max_var, width=8)
+        self.y_max_entry.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(self.manual_scale_frame, text="Apply Range", command=self.apply_manual_scale).pack(side=tk.LEFT)
+        
+        # Show manual controls if auto-scale is disabled
+        if not self.auto_scale_var.get():
+            self.manual_scale_frame.pack(side=tk.LEFT, padx=(10, 0))
 
         # Current power display
         current_frame = ttk.Frame(main_frame, style='Card.TFrame')
@@ -256,6 +282,49 @@ class PowerMonitor:
         except ValueError:
             messagebox.showerror("Error", "Please enter a valid number")
             self.freq_var.set(str(self.acquisition_frequency_ms))
+
+    def toggle_auto_scale(self):
+        """Toggle between auto-scaling and manual Y-axis control"""
+        if self.auto_scale_var.get():
+            # Auto-scale enabled - hide manual controls
+            self.manual_scale_frame.pack_forget()
+        else:
+            # Auto-scale disabled - show manual controls
+            self.manual_scale_frame.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Save setting to configuration
+        self.config["display"]["auto_scale"] = self.auto_scale_var.get()
+        save_config(self.config)
+        
+        self.update_gui()
+
+    def apply_manual_scale(self):
+        """Apply manual Y-axis range settings"""
+        try:
+            y_min = float(self.y_min_var.get())
+            y_max = float(self.y_max_var.get())
+            
+            if y_min >= y_max:
+                messagebox.showerror("Error", "Y-Min must be less than Y-Max")
+                return
+            
+            if y_min < 0:
+                messagebox.showerror("Error", "Y-Min cannot be negative")
+                return
+            
+            # Apply the manual range
+            self.ax.set_ylim(y_min, y_max)
+            self.canvas.draw()
+            
+            # Save settings to configuration
+            self.config["display"]["y_min"] = y_min
+            self.config["display"]["y_max"] = y_max
+            save_config(self.config)
+            
+            messagebox.showinfo("Success", f"Y-axis range set to {y_min:.1f} - {y_max:.1f}")
+            
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for Y-axis range")
 
     def setup_cleanup(self):
         self.root.protocol("WM_DELETE_WINDOW", self.cleanup_and_exit)
@@ -666,14 +735,60 @@ class PowerMonitor:
         # Add legend
         self.ax.legend(loc='upper right', framealpha=0.9, fancybox=True, shadow=True)
         
-        if len(forward_powers) > 0 or len(reflected_powers) > 0:
-            all_powers = forward_powers + reflected_powers
-            if all_powers:
-                y_padding = max(50, (max(all_powers) - min(all_powers)) * 0.2)
-                self.ax.set_ylim(
-                    max(0, min(all_powers) - y_padding),
-                    max(all_powers) + y_padding
-                )
+        # Improved Y-axis autoscaling
+        if self.auto_scale_var.get():  # Only auto-scale if enabled
+            if len(forward_powers) > 0 or len(reflected_powers) > 0:
+                # Get all power values
+                all_powers = forward_powers + reflected_powers
+                
+                if all_powers:
+                    min_power = min(all_powers)
+                    max_power = max(all_powers)
+                    power_range = max_power - min_power
+                    
+                    # Calculate intelligent padding based on power range
+                    if power_range > 0:
+                        # Use percentage-based padding for larger ranges
+                        padding_factor = 0.15  # 15% padding
+                        y_padding = max(power_range * padding_factor, 10)  # Minimum 10W padding
+                    else:
+                        # If all values are the same, add fixed padding
+                        y_padding = max(max_power * 0.1, 10)  # 10% of value or 10W minimum
+                    
+                    # Set Y-axis limits with intelligent bounds
+                    y_min = max(0, min_power - y_padding)
+                    y_max = max_power + y_padding
+                    
+                    # Ensure we have a reasonable range even for very small values
+                    if y_max - y_min < 20:
+                        y_max = y_min + 20
+                    
+                    self.ax.set_ylim(y_min, y_max)
+                    
+                    # Add Y-axis ticks with appropriate spacing
+                    if y_max - y_min > 100:
+                        # For large ranges, use fewer ticks
+                        self.ax.yaxis.set_major_locator(plt.MaxNLocator(6))
+                    else:
+                        # For smaller ranges, use more ticks
+                        self.ax.yaxis.set_major_locator(plt.MaxNLocator(8))
+            else:
+                # Default range when no data is available
+                self.ax.set_ylim(0, 1000)
+        else:
+            # Manual scaling mode - preserve current range or use default
+            try:
+                y_min = float(self.y_min_var.get())
+                y_max = float(self.y_max_var.get())
+                if y_min < y_max and y_min >= 0:
+                    self.ax.set_ylim(y_min, y_max)
+                else:
+                    # Fallback to default range if manual values are invalid
+                    self.ax.set_ylim(0, 1000)
+            except ValueError:
+                # Fallback to default range if manual values are invalid
+                self.ax.set_ylim(0, 1000)
+        
         self.figure.tight_layout()
         self.canvas.draw()
 
