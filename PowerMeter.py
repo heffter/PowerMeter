@@ -158,14 +158,30 @@ class PowerMonitor:
                 return jsonify({
                     'timestamp': time.time(),
                     'forward_power': 0.0,
-                    'reflected_power': 0.0
+                    'reflected_power': 0.0,
+                    'vswr': 1.0
                 })
             
             timestamp, forward_power, reflected_power = self.data[-1]
+            
+            # Calculate VSWR - handle negative reflected power by using absolute value
+            reflected_power_abs = abs(reflected_power)
+            if forward_power > 0 and reflected_power_abs < forward_power:
+                # VSWR = (1 + sqrt(Pr/Pf)) / (1 - sqrt(Pr/Pf))
+                # where Pr = reflected power, Pf = forward power
+                ratio = reflected_power_abs / forward_power
+                if ratio < 1:  # Valid case
+                    vswr = (1 + ratio**0.5) / (1 - ratio**0.5)
+                else:
+                    vswr = float('inf')  # Invalid case
+            else:
+                vswr = 1.0  # Perfect match or no forward power
+            
             return jsonify({
                 'timestamp': timestamp,
                 'forward_power': forward_power,
-                'reflected_power': reflected_power
+                'reflected_power': reflected_power,
+                'vswr': vswr
             })
         
         @self.api_server.route('/api/history', methods=['GET'])
@@ -177,11 +193,28 @@ class PowerMonitor:
                 return jsonify([])
             
             recent_data = self.data[-limit:]
-            return jsonify([{
-                'timestamp': ts,
-                'forward_power': fp,
-                'reflected_power': rp
-            } for ts, fp, rp in recent_data])
+            history = []
+            
+            for ts, fp, rp in recent_data:
+                # Calculate VSWR for each data point
+                reflected_power_abs = abs(rp)
+                if fp > 0 and reflected_power_abs < fp:
+                    ratio = reflected_power_abs / fp
+                    if ratio < 1:
+                        vswr = (1 + ratio**0.5) / (1 - ratio**0.5)
+                    else:
+                        vswr = float('inf')
+                else:
+                    vswr = 1.0
+                
+                history.append({
+                    'timestamp': ts,
+                    'forward_power': fp,
+                    'reflected_power': rp,
+                    'vswr': vswr
+                })
+            
+            return jsonify(history)
         
         @self.api_server.route('/api/devices', methods=['GET'])
         def list_devices():
@@ -918,8 +951,13 @@ class PowerMonitor:
         if not self.data:
             return
         _, current_forward, current_reflected = self.data[-1]
-        self.forward_power_var.set(f"{current_forward:.2f} W")
-        self.reflected_power_var.set(f"{current_reflected:.2f} W")
+        
+        # Format power values - show 0.00 instead of -0.00 for very small negative values
+        forward_display = f"{current_forward:.2f} W"
+        reflected_display = f"{current_reflected:.2f} W" if abs(current_reflected) >= 0.01 else "0.00 W"
+        
+        self.forward_power_var.set(forward_display)
+        self.reflected_power_var.set(reflected_display)
         self.ax.clear()
         timestamps = [datetime.fromtimestamp(ts) for ts, _, _ in self.data]
         forward_powers = [f for _, f, _ in self.data]

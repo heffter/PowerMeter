@@ -125,17 +125,19 @@ class PowerMeterApiTest:
         timestamp = power_data.get('timestamp', 0)
         forward_power = power_data.get('forward_power', 0)
         reflected_power = power_data.get('reflected_power', 0)
+        vswr = power_data.get('vswr', 1.0)  # Get VSWR from API response
         
-        # Calculate VSWR if both powers are available
-        vswr = "N/A"
-        if forward_power > 0 and reflected_power >= 0:
-            try:
-                reflection_coeff = (reflected_power / forward_power) ** 0.5
-                vswr = (1 + reflection_coeff) / (1 - reflection_coeff) if reflection_coeff < 1 else "∞"
-                if isinstance(vswr, float):
-                    vswr = f"{vswr:.2f}"
-            except:
-                vswr = "N/A"
+        # Format VSWR value
+        if isinstance(vswr, (int, float)):
+            if vswr == float('inf'):
+                vswr_str = "∞"
+            else:
+                vswr_str = f"{vswr:.2f}"
+        else:
+            vswr_str = "N/A"
+        
+        # Format reflected power display - show 0.00 for very small negative values
+        reflected_display = reflected_power if abs(reflected_power) >= 0.01 else 0.0
         
         # Format timestamp
         try:
@@ -145,7 +147,7 @@ class PowerMeterApiTest:
             time_str = "N/A"
         
         # Clear line and print power reading
-        print(f"\r[{time_str}] Forward: {forward_power:8.2f} W | Reflected: {reflected_power:8.2f} W | VSWR: {vswr:>6}", end="", flush=True)
+        print(f"\r[{time_str}] Forward: {forward_power:8.2f} W | Reflected: {reflected_display:8.2f} W | VSWR: {vswr_str:>6}", end="", flush=True)
     
     def run(self):
         """Main test loop"""
