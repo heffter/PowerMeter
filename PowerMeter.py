@@ -751,7 +751,7 @@ class PowerMonitor:
                 self.n1914a.write(f"SENS:FREQ {freq}")
                 
                 # Configure Channel A (Forward Power)
-                self.n1914a.write(":SENS:CHAN 1")
+                self.n1914a.write(":INSTrument:SELect A")
                 self.n1914a.write(f"SENS:AVER:COUN {avg_count}")
                 self.n1914a.write(f"UNIT:POW {unit}")
                 self.n1914a.write(f"TRIG:SOUR {trigger}")
@@ -763,7 +763,7 @@ class PowerMonitor:
                 self.n1914a.write(f"SENS:POW:INT {integration}")
                 
                 # Configure Channel B (Reflected Power)
-                self.n1914a.write(":SENS:CHAN 2")
+                self.n1914a.write(":INSTrument:SELect B")
                 self.n1914a.write(f"SENS:AVER:COUN {avg_count}")
                 self.n1914a.write(f"UNIT:POW {unit}")
                 self.n1914a.write(f"TRIG:SOUR {trigger}")
@@ -864,17 +864,18 @@ class PowerMonitor:
             return None
         try:
             # Read from Channel A (Forward Power)
-            self.n1914a.write(":SENS:CHAN 1")
+            self.n1914a.write(":INSTrument:SELect A")  # select Channel A
             self.n1914a.write(":INITiate:CONTinuous 1")
             forward_power = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
             
             # Read from Channel B (Reflected Power)
-            self.n1914a.write(":SENS:CHAN 2")
+            self.n1914a.write(":INSTrument:SELect B")  # select Channel B
             self.n1914a.write(":INITiate:CONTinuous 1")
             reflected_power = self.n1914a.query_ascii_values(":FETCh:SCALar:POWer:AC?")[0]
             
             return (float(forward_power), float(reflected_power))
         except Exception as e:
+            print(f"Error reading power: {e}")
             self.device_connected = False
             return None
 
