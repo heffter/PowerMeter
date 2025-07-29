@@ -423,7 +423,9 @@ class PowerMonitor:
         manual_frame = ttk.Frame(connection_frame)
         manual_frame.pack(fill=tk.X, pady=5)
         ttk.Label(manual_frame, text="Manual Connection String:").pack(anchor=tk.W)
-        manual_var = tk.StringVar(value="USB0::0x0957::0x0607::MY12345678::INSTR")
+        # Use the last connection string from config, or default if not available
+        last_connection = self.config["device"]["connection_string"] if self.config["device"]["connection_string"] else "USB0::0x0957::0x0607::MY12345678::INSTR"
+        manual_var = tk.StringVar(value=last_connection)
         manual_entry = ttk.Entry(manual_frame, textvariable=manual_var, width=50)
         manual_entry.pack(fill=tk.X, pady=(0, 2))
         ttk.Label(manual_frame, text="Format: USB0::ManufacturerID::ModelID::Serial::INSTR\nExample: USB0::0x0957::0x0607::MY12345678::INSTR", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
@@ -613,8 +615,7 @@ class PowerMonitor:
         
         ttk.Button(apply_frame, text="Apply Configuration", command=apply_config).pack(pady=10)
         
-        # Initialize device scan
-        scan_devices()
+        # Note: Device scan is only performed when user clicks "Scan for Devices" button
 
     def generate_power_reading(self) -> Tuple[float, float]:
         # Generate forward power (Channel A)
