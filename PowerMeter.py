@@ -125,6 +125,9 @@ class PowerMonitor:
         if not self.connect_to_device():
             self.simulation_mode = True
             self.device_connected = False
+        else:
+            # Initialize continuous measurement mode for real device
+            self.initialize_continuous_measurement()
         
         self.setup_gui()
         self.setup_cleanup()
@@ -268,6 +271,19 @@ class PowerMonitor:
         
         save_config(self.config)
 
+    def initialize_continuous_measurement(self):
+        """Initialize continuous measurement mode for both channels"""
+        if not self.n1914a or not self.device_connected:
+            return
+        
+        try:
+            # Set continuous measurement mode for both channels (only once during initialization)
+            self.n1914a.write(":INITiate1:CONTinuous ON")
+            self.n1914a.write(":INITiate2:CONTinuous ON")
+            print("Continuous measurement mode initialized for both channels")
+        except Exception as e:
+            print(f"Error initializing continuous measurement: {e}")
+
     def connect_to_device(self) -> bool:
         # Use connection string from config
         connection_string = self.config["device"]["connection_string"]
@@ -410,8 +426,6 @@ class PowerMonitor:
                    style='Accent.TButton', command=self.export_csv).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Configure Device",
                    command=self.configure_device).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Debug Channels",
-                   command=self.debug_channels).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Exit",
                    command=self.cleanup_and_exit).pack(side=tk.RIGHT, padx=5)
 
@@ -752,10 +766,6 @@ class PowerMonitor:
                 # Set frequency
                 self.n1914a.write(f"SENS:FREQ {freq}")
                 
-                # Set continuous measurement mode for both channels
-                self.n1914a.write(":INITiate1:CONTinuous ON")
-                self.n1914a.write(":INITiate2:CONTinuous ON")
-                
                 # Configure Channel 1 (Forward Power) - using correct SCPI commands from programming guide
                 self.n1914a.write(f"SENS1:AVER:COUN {avg_count}")
                 self.n1914a.write(f"SENS1:UNIT:POW {unit}")
@@ -831,6 +841,9 @@ class PowerMonitor:
                 self.data.clear()  # Clear data when switching to real device
                 self.update_status_display()
                 
+                # Initialize continuous measurement mode
+                self.initialize_continuous_measurement()
+                
                 messagebox.showinfo("Success", f"Device configured successfully!\nDevice: {identity}")
                 status_var.set(f"Connected: {identity}")
                 
@@ -863,63 +876,10 @@ class PowerMonitor:
         
         return (round(max(0, forward_result), 2), round(max(0, reflected_result), 2))
 
-    def debug_channels(self):
-        """Debug method to test correct SCPI commands for channel selection"""
-        if not self.n1914a or not self.device_connected:
-            messagebox.showerror("Error", "No device connected")
-            return
-        
-        try:
-            print("\n=== DEBUGGING CHANNEL SELECTION ===")
-            
-            # Test 1: Using correct FETCh commands from programming guide
-            print("\nTest 1: FETCh1 and FETCh2 (correct commands)")
-            power_1 = self.n1914a.query_ascii_values(":FETCh1:SCALar:POWer:AC?")[0]
-            print(f"Channel 1 power: {power_1}")
-            
-            power_2 = self.n1914a.query_ascii_values(":FETCh2:SCALar:POWer:AC?")[0]
-            print(f"Channel 2 power: {power_2}")
-            
-            # Test 2: Using READ commands
-            print("\nTest 2: READ1 and READ2")
-            power_1_read = self.n1914a.query_ascii_values(":READ1:SCALar:POWer:AC?")[0]
-            print(f"Channel 1 (READ): {power_1_read}")
-            
-            power_2_read = self.n1914a.query_ascii_values(":READ2:SCALar:POWer:AC?")[0]
-            print(f"Channel 2 (READ): {power_2_read}")
-            
-            # Test 3: Check device capabilities
-            print("\nTest 3: Device capabilities")
-            try:
-                idn = self.n1914a.query("*IDN?").strip()
-                print(f"Device ID: {idn}")
-            except:
-                print("Could not get device ID")
-            
-            # Summary
-            print("\n=== SUMMARY ===")
-            print(f"FETCh - Ch1: {power_1}, Ch2: {power_2}, Diff: {abs(float(power_1) - float(power_2))}")
-            print(f"READ - Ch1: {power_1_read}, Ch2: {power_2_read}, Diff: {abs(float(power_1_read) - float(power_2_read))}")
-            
-            # Show results in GUI
-            messagebox.showinfo("Debug Results", 
-                              f"Debug completed. Check console for details.\n\n"
-                              f"FETCh - Ch1: {power_1}, Ch2: {power_2}\n"
-                              f"READ - Ch1: {power_1_read}, Ch2: {power_2_read}\n"
-                              f"Difference: {abs(float(power_1) - float(power_2)):.3f} W")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Debug failed: {str(e)}")
-            print(f"Debug error: {e}")
-
     def read_n1914a_power(self) -> Optional[Tuple[float, float]]:
         if not self.n1914a or not self.device_connected:
             return None
         try:
-            # Set continuous measurement mode for both channels
-            self.n1914a.write(":INITiate1:CONTinuous ON")
-            self.n1914a.write(":INITiate2:CONTinuous ON")
-            
             # Read from Channel 1 (Forward Power) - using correct SCPI commands from programming guide
             forward_power = self.n1914a.query_ascii_values(":FETCh1:SCALar:POWer:AC?")[0]
             
