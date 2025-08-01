@@ -43,12 +43,27 @@ function Process-RFGData {
         $rfgNumber = $RFGName.Substring(3, 1) # Extract "0" from "RFG0" or "1" from "RFG1"
         
         # Function to safely import CSV data
-        function Import-CSVData {
-            param(
-                [string]$WorksheetName,
-                [string]$FilePattern,
-                [string]$RFGName
-            )
+        function Test-FileAccess {
+    param([string]$FilePath)
+    
+    try {
+        # Test if we can create/write to the file
+        $testFile = $FilePath + ".test"
+        [System.IO.File]::WriteAllText($testFile, "test")
+        Remove-Item $testFile -Force
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Import-CSVData {
+    param(
+        [string]$WorksheetName,
+        [string]$FilePattern,
+        [string]$RFGName
+    )
             
             Write-Host "  Importing $WorksheetName data..." -ForegroundColor Yellow
             
@@ -150,31 +165,124 @@ function Process-RFGData {
         Import-CSVData -WorksheetName "CHB-REF" -FilePattern "rfg_${rfgNumber}BR*.csv" -RFGName $RFGName
         Start-Sleep -Milliseconds 1000 # Delay between imports
         
-        # Save the processed file
+        # Save the processed file with multiple retry attempts
         $outputFileName = "TVN-4-$TVNNumber-$RFGName.xlsx"
         $outputPath = Join-Path $RFGPath $outputFileName
         Write-Host "  Saving: $outputFileName" -ForegroundColor Yellow
         
-        try {
-            $workbook.SaveAs($outputPath)
-            Write-Host "  Saved: $outputFileName" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "  WARNING: Failed to save $outputFileName`: $($_.Exception.Message)" -ForegroundColor Yellow
+        # Check file access before attempting to save
+        if (-not (Test-FileAccess $outputPath)) {
+            Write-Host "  WARNING: Cannot access output path, file may be locked or directory not writable" -ForegroundColor Yellow
+            Write-Host "  Attempting to save anyway..." -ForegroundColor Gray
         }
         
-        # Export CSV to main output folder
-        Write-Host "  Exporting CSV..." -ForegroundColor Yellow
-        try {
-            $exportWorksheet = $workbook.Worksheets.Item("Export.CSV")
-            $exportWorksheet.Activate()
-            
-            $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
-            $workbook.SaveAs($csvOutputPath, 6) # 6 = CSV format
-            Write-Host "  Exported CSV: calibrate_rfg_$rfgNumber.csv" -ForegroundColor Green
+        # Ensure output directory exists and is writable
+        $outputDir = Split-Path $outputPath -Parent
+        if (-not (Test-Path $outputDir)) {
+            try {
+                New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+                Write-Host "  Created output directory: $outputDir" -ForegroundColor Gray
+            } catch {
+                Write-Host "  ERROR: Cannot create output directory: $outputDir" -ForegroundColor Red
+            }
         }
-        catch {
-            Write-Host "  WARNING: Failed to export CSV: $($_.Exception.Message)" -ForegroundColor Yellow
+        
+        $saveSuccess = $false
+        $maxRetries = 3
+        
+        for ($retry = 1; $retry -le $maxRetries; $retry++) {
+            try {
+                # Force Excel to update calculations before saving
+                $excel.Calculate()
+                Start-Sleep -Milliseconds 500
+                
+                # Try different save methods
+                if ($retry -eq 1) {
+                    # Method 1: Standard SaveAs
+                    $workbook.SaveAs($outputPath)
+                } elseif ($retry -eq 2) {
+                    # Method 2: Save with explicit format
+                    $workbook.SaveAs($outputPath, 51) # 51 = xlOpenXMLWorkbook (without macro's in 2007-2016, *.xlsx)
+                } else {
+                    # Method 3: Save to temporary location first
+                    $tempPath = Join-Path $env:TEMP "temp_$([System.Guid]::NewGuid().ToString()).xlsx"
+                    $workbook.SaveAs($tempPath)
+                    Start-Sleep -Milliseconds 1000
+                    Copy-Item $tempPath $outputPath -Force
+                    Remove-Item $tempPath -Force
+                }
+                
+                Write-Host "  Saved: $outputFileName (attempt $retry)" -ForegroundColor Green
+                $saveSuccess = $true
+                break
+            }
+            catch {
+                Write-Host "  WARNING: Save attempt $retry failed`: $($_.Exception.Message)" -ForegroundColor Yellow
+                if ($retry -lt $maxRetries) {
+                    Write-Host "  Retrying in 2 seconds..." -ForegroundColor Gray
+                    Start-Sleep -Seconds 2
+                    # Force garbage collection before retry
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                }
+            }
+        }
+        
+        if (-not $saveSuccess) {
+            Write-Host "  ERROR: Failed to save $outputFileName after $maxRetries attempts" -ForegroundColor Red
+        }
+        
+        # Export CSV to main output folder (only if Excel save was successful)
+        if ($saveSuccess) {
+            Write-Host "  Exporting CSV..." -ForegroundColor Yellow
+            $csvSuccess = $false
+            
+            for ($csvRetry = 1; $csvRetry -le 2; $csvRetry++) {
+                try {
+                    # Check if Export.CSV worksheet exists
+                    $exportWorksheet = $null
+                    try {
+                        $exportWorksheet = $workbook.Worksheets.Item("Export.CSV")
+                    } catch {
+                        Write-Host "  WARNING: Export.CSV worksheet not found, skipping CSV export" -ForegroundColor Yellow
+                        break
+                    }
+                    
+                    if ($exportWorksheet) {
+                        $exportWorksheet.Activate()
+                        Start-Sleep -Milliseconds 500
+                        
+                        $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
+                        
+                        if ($csvRetry -eq 1) {
+                            # Method 1: SaveAs with CSV format
+                            $workbook.SaveAs($csvOutputPath, 6) # 6 = CSV format
+                        } else {
+                            # Method 2: Manual CSV export using worksheet copy
+                            $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
+                            $exportWorksheet.Copy() | Out-Null
+                            $tempWorkbook = $excel.Workbooks.Item($excel.Workbooks.Count)
+                            $tempWorkbook.SaveAs($csvOutputPath, 6)
+                            $tempWorkbook.Close($false)
+                        }
+                        
+                        Write-Host "  Exported CSV: calibrate_rfg_$rfgNumber.csv" -ForegroundColor Green
+                        $csvSuccess = $true
+                        break
+                    }
+                }
+                catch {
+                    Write-Host "  WARNING: CSV export attempt $csvRetry failed`: $($_.Exception.Message)" -ForegroundColor Yellow
+                    if ($csvRetry -lt 2) {
+                        Write-Host "  Retrying CSV export in 1 second..." -ForegroundColor Gray
+                        Start-Sleep -Seconds 1
+                    }
+                }
+            }
+            
+            if (-not $csvSuccess) {
+                Write-Host "  WARNING: Failed to export CSV after multiple attempts" -ForegroundColor Yellow
+            }
         }
         
         # Close workbook
