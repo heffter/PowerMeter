@@ -1,0 +1,48 @@
+8.20	There are 8 data log files created: 
+8.20.1	4 for RFG0 - Channel A (CHA) Forward (FWD) & Reflected (REF); Channel B (CHB) FWD & REF 
+8.20.2	4 for RFG1 - CHA FWD, CHA REF, CHB FWD, CHB REF
+Note:
+RFG0 CHA in software refers to RF CH1 output cable
+RFG0 CHB in software refers to RF CH2 output cable
+RFG1 CHA in software refers to RF CH3 output cable
+RFG1 CHB in software refers to RF CH4 output cable
+8.21	Rename each of the .log files to .csv files by clicking on the “Rename log to csv.CMD” file located in the same folder (C:\AMS\Remote_Control\log).   
+9.0	Import Calibration Data 
+9.1	Create folder/file structures: (on computer with Excel 2010 installed)
+9.1.1	\TVN-4-xxxx\step1\RFG0\
+9.1.2	\TVN-4-xxxx\step1\RFG1\
+9.2	Save a copy of the Excel template file in the C:\AMS\Remote_Control\log folder, “RF_Power_Calibrate_Template”, to each of the folders created in Step 9.1.
+9.3	Copy the csv files (from 8.20, 8.21) to the corresponding folder created in Step 9.1.
+9.4	Right click and select “New” on the Template Excel file (Step 9.2) in the RFG0 folder.  
+9.4.1	A new Workbook containing 5 sheets with tabs labeled Export.CSV, CHA-FOR, CHA-REF, CHB-FOR, CHB-REF will open.
+9.4.2	Ensure CHA-FOR is the active sheet
+9.5	Select the menu item “Data” and then “From Text”.
+9.6	Navigate to folder \TVN-4-xxxx\step1\RFG0\; locate forward calibration data for RF Channel 1 (csv file name 0AF) and select “Import.”  
+9.6.1	Ensure “Delimited” is selected in the pop up window and ONLY “Comma” delimiter type is checked.  Click “Finish.”
+9.6.2	Ensure “Existing Worksheet” is selected in Import Data pop up window.  Click “OK.”
+9.7	Choose CHA-REF as the active sheet and repeat Steps 9.5 and 9.6 EXCEPT import reflected calibration data for RF Channel 1 (csv file name 0AR to CHA-REF).
+9.8	Choose CHB-FOR as the active sheet and repeat Steps 9.5 and 9.6 EXCEPT import forward calibration data for RF Channel 2 (csv file name 0BF to CHB-FOR).
+9.9	Finish with CHB-REF as the active sheet and repeat Steps 9.5 and 9.6 EXCEPT import reflected calibration data for RF Channel 2 (csv file name 0BR to CHB-REF).
+9.10	Calibration data for RFG0 has now been imported. Save this file (include TVN system number and RFG0 in file name) in the RFG0 folder created in Step 9.1.1. 
+9.11	Right click and select “New” on the Template Excel file (from Step 9.2) in the RFG1 folder.
+9.11.1	A new Workbook containing 5 sheets with tabs labeled Export.CSV, CHA-FOR, CHA-REF, CHB-FOR, CHB-REF will open.
+9.11.2	Ensure CHA-FOR is the active sheet
+9.12	Repeat Steps 9.5 - 9.9 to import calibration data for RFG1 (RF channels 3 & 4) as follows:
+9.12.1	RF Channel 3 forward: csv file name 1AF to CHA-FOR 
+9.12.2	RF Channel 3 reflected: csv file name 1AR to CHA-REF
+9.12.3	RF Channel 4 forward: csv file name 1BF to CHB-FOR
+9.12.4	RF Channel 4 reflected: csv file name 1BR to CHB-REF
+
+9.13	 Calibration data for RFG1 has now been imported. Save this file (include TVN system number and RFG1 in file name) in the RFG1 folder created in Step 9.1.2. 
+
+10.0	Export Calibration Data 
+
+10.1	Create folder:  \TVN-4-xxxx\step3\TVN-4-xxxx\
+10.2	Choose “Export.CSV” as the active sheet in the RFG0 calibration data file.
+10.3	Select “Save As” from “File” menu and choose *.csv file type.
+10.4	Name the file “calibrate_rfg_0.csv” and save in folder created in Step 10.1.
+10.4.1	Note: Click OK to save worksheet only 
+10.5	Choose “Export.CSV” as the active sheet in the RFG1 calibration data file.
+10.6	Select “Save As” from “File” menu and choose *.csv file type.
+10.7	Name the file “calibrate_rfg_1.csv” and save in folder created in Step 10.1
+10.7.1	Note: Click OK to save worksheet only
