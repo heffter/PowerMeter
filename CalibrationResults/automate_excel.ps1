@@ -12,37 +12,7 @@ param(
     [string]$TemplateFile
 )
 
-# Function to process RFG data with better memory management
-function Process-RFGData {
-    param(
-        [string]$RFGPath,
-        [string]$RFGName,
-        [string]$TVNNumber,
-        [string]$TemplateFile
-    )
-    
-    Write-Host "Processing $RFGName data..." -ForegroundColor Green
-    
-    # Create Excel application
-    $excel = $null
-    $workbook = $null
-    
-    try {
-        $excel = New-Object -ComObject Excel.Application
-        $excel.Visible = $false
-        $excel.DisplayAlerts = $false
-        $excel.EnableEvents = $false
-        $excel.ScreenUpdating = $false
-        
-        # Open template file
-        $templatePath = Join-Path $RFGPath $TemplateFile
-        Write-Host "  Opening template: $templatePath" -ForegroundColor Gray
-        $workbook = $excel.Workbooks.Open($templatePath)
-        
-        # Get RFG number for file matching
-        $rfgNumber = $RFGName.Substring(3, 1) # Extract "0" from "RFG0" or "1" from "RFG1"
-        
-        # Function to safely import CSV data
+# Helper functions (global scope)
 function Test-FileAccess {
     param([string]$FilePath)
     
@@ -88,7 +58,38 @@ function Get-AccurateFileSize {
     }
 }
 
-function Import-CSVData {
+# Function to process RFG data with better memory management
+function Process-RFGData {
+    param(
+        [string]$RFGPath,
+        [string]$RFGName,
+        [string]$TVNNumber,
+        [string]$TemplateFile
+    )
+    
+    Write-Host "Processing $RFGName data..." -ForegroundColor Green
+    
+    # Create Excel application
+    $excel = $null
+    $workbook = $null
+    
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $excel.EnableEvents = $false
+        $excel.ScreenUpdating = $false
+        
+        # Open template file
+        $templatePath = Join-Path $RFGPath $TemplateFile
+        Write-Host "  Opening template: $templatePath" -ForegroundColor Gray
+        $workbook = $excel.Workbooks.Open($templatePath)
+        
+        # Get RFG number for file matching
+        $rfgNumber = $RFGName.Substring(3, 1) # Extract "0" from "RFG0" or "1" from "RFG1"
+        
+        # Function to safely import CSV data
+        function Import-CSVData {
     param(
         [string]$WorksheetName,
         [string]$FilePattern,
@@ -100,9 +101,8 @@ function Import-CSVData {
             $csvFile = Get-ChildItem -Path $RFGPath -Filter $FilePattern | Select-Object -First 1
             if ($csvFile) {
                 try {
-                    # Check file size
-                    $fileSize = (Get-Item $csvFile.FullName).Length
-                    $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
+                    # Check file size using global function
+                    $fileSizeMB = Get-AccurateFileSize $csvFile.FullName
                     Write-Host "    File size: $fileSizeMB MB" -ForegroundColor Gray
                     
                     # If file is large, try alternative import method
