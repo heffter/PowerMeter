@@ -1,0 +1,127 @@
+PowerMeter C# Client Test Application
+=====================================
+
+Testing against: http://localhost:5000
+
+=== TEST 1: Server Status (Async) ===
+[ASYNC] GET http://localhost:5000/api/status
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"acquisition_frequency_ms":1000,"data_points":52,"device_connected":false,"monitoring":true,"simulation_mode":true}
+
+√ Async Status: Device=False, Simulation=False, Monitoring=True
+
+=== TEST 2: Server Status (Sync) ===
+[SYNC] GET http://localhost:5000/api/status
+[SYNC] Response Status: OK
+[SYNC] Response JSON: {"acquisition_frequency_ms":1000,"data_points":52,"device_connected":false,"monitoring":true,"simulation_mode":true}
+
+√ Sync Status: Device=False, Simulation=False, Monitoring=True
+
+=== TEST 3: Current Power (Async) ===
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":791.63,"reflected_power":43.54,"timestamp":1754041484.21937,"vswr":1.6127456257895674}
+
+√ Async Power: Forward=0.00W, Reflected=0.00W, VSWR=1.61
+
+=== TEST 4: Current Power (Sync) ===
+[SYNC] GET http://localhost:5000/api/current
+[SYNC] Response Status: OK
+[SYNC] Response JSON: {"forward_power":791.63,"reflected_power":43.54,"timestamp":1754041484.21937,"vswr":1.6127456257895674}
+
+√ Sync Power: Forward=0.00W, Reflected=0.00W, VSWR=1.61
+
+=== TEST 5: List Devices (Async) ===
+[ASYNC] GET http://localhost:5000/api/devices
+[ASYNC] Response Status: InternalServerError
+[ASYNC] Error listing devices: Response status code does not indicate success: 500 (INTERNAL SERVER ERROR).
+? Async Devices: Failed to get devices
+
+=== TEST 6: List Devices (Sync) ===
+[SYNC] GET http://localhost:5000/api/devices
+[SYNC] Response Status: InternalServerError
+[SYNC] Error listing devices: Response status code does not indicate success: 500 (INTERNAL SERVER ERROR).
+? Sync Devices: Failed to get devices
+
+=== TEST 7: Connect to Device (Async) ===
+[ASYNC] POST http://localhost:5000/api/connect
+[ASYNC] Request JSON: {"connection_string":""}
+[ASYNC] Response Status: NotFound
+[ASYNC] Response JSON: <!doctype html>
+<html lang=en>
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+
+[ASYNC] Error connecting to device: Unexpected character encountered while parsing value: <. Path '', line 0, position 0.
+? Async Connect: Unexpected character encountered while parsing value: <. Path '', line 0, position 0.
+
+=== TEST 8: Connect to Device (Sync) ===
+[SYNC] POST http://localhost:5000/api/connect
+[SYNC] Request JSON: {"connection_string":""}
+[SYNC] Response Status: NotFound
+[SYNC] Response JSON: <!doctype html>
+<html lang=en>
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+
+[SYNC] Error connecting to device: Unexpected character encountered while parsing value: <. Path '', line 0, position 0.
+? Sync Connect: Unexpected character encountered while parsing value: <. Path '', line 0, position 0.
+
+=== TEST 9: Continuous Monitoring Test ===
+Starting continuous monitoring for 10 seconds...
+Press any key to stop early...
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":791.63,"reflected_power":43.54,"timestamp":1754041484.21937,"vswr":1.6127456257895674}
+
+[11:44:44] #1: Forward=0.00W, Reflected=0.00W, VSWR=1.61
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":825.39,"reflected_power":60.24,"timestamp":1754041485.3702831,"vswr":1.7403075707287565}
+
+[11:44:45] #2: Forward=0.00W, Reflected=0.00W, VSWR=1.74
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":866.66,"reflected_power":54.68,"timestamp":1754041486.5047164,"vswr":1.6708787780654457}
+
+[11:44:46] #3: Forward=0.00W, Reflected=0.00W, VSWR=1.67
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":866.66,"reflected_power":54.68,"timestamp":1754041486.5047164,"vswr":1.6708787780654457}
+
+[11:44:47] #4: Forward=0.00W, Reflected=0.00W, VSWR=1.67
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":806.99,"reflected_power":45.87,"timestamp":1754041487.649605,"vswr":1.6260959290665924}
+
+[11:44:48] #5: Forward=0.00W, Reflected=0.00W, VSWR=1.63
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":736.13,"reflected_power":38.6,"timestamp":1754041488.767617,"vswr":1.5939998589873068}
+
+[11:44:49] #6: Forward=0.00W, Reflected=0.00W, VSWR=1.59
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":805.6,"reflected_power":63.72,"timestamp":1754041489.9307346,"vswr":1.782572652924637}
+
+[11:44:50] #7: Forward=0.00W, Reflected=0.00W, VSWR=1.78
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":1109.07,"reflected_power":64.27,"timestamp":1754041491.0708082,"vswr":1.634098415736864}
+
+[11:44:51] #8: Forward=0.00W, Reflected=0.00W, VSWR=1.63
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":1072.24,"reflected_power":61.7,"timestamp":1754041492.220846,"vswr":1.6311683560217212}
+
+[11:44:52] #9: Forward=0.00W, Reflected=0.00W, VSWR=1.63
+[ASYNC] GET http://localhost:5000/api/current
+[ASYNC] Response Status: OK
+[ASYNC] Response JSON: {"forward_power":854.41,"reflected_power":42.39,"timestamp":1754041493.3480132,"vswr":1.5731421115642388}
+
+[11:44:53] #10: Forward=0.00W, Reflected=0.00W, VSWR=1.57
+Monitoring test completed.
+
+Test completed. Press any key to exit...

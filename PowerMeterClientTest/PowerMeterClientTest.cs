@@ -44,7 +44,7 @@ namespace PowerMeterClientTest
         public string Message { get; set; }
     }
 
-    public class PowerMeterClient
+    public class PowerMeterClient : IDisposable
     {
         private readonly HttpClient _httpClient;
         private readonly string _baseUrl;
