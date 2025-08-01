@@ -24,13 +24,19 @@ function Process-RFGData {
     Write-Host "Processing $RFGName data..." -ForegroundColor Green
     
     # Create Excel application
-    $excel = New-Object -ComObject Excel.Application
-    $excel.Visible = $false
-    $excel.DisplayAlerts = $false
+    $excel = $null
+    $workbook = $null
     
     try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $excel.EnableEvents = $false
+        $excel.ScreenUpdating = $false
+        
         # Open template file
         $templatePath = Join-Path $RFGPath $TemplateFile
+        Write-Host "  Opening template: $templatePath" -ForegroundColor Gray
         $workbook = $excel.Workbooks.Open($templatePath)
         
         # Get RFG number for file matching
@@ -43,10 +49,15 @@ function Process-RFGData {
         
         $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}AF*.csv" | Select-Object -First 1
         if ($csvFile) {
-            $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-            $queryTable.TextFileCommaDelimiter = $true
-            $queryTable.Refresh($false)
-            Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            try {
+                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
+                $queryTable.TextFileCommaDelimiter = $true
+                $queryTable.Refresh($false)
+                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            }
+            catch {
+                Write-Host "    WARNING: Failed to import CHA-FOR data: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
         } else {
             Write-Host "    WARNING: No CHA-FOR file found for $RFGName" -ForegroundColor Yellow
         }
@@ -58,10 +69,15 @@ function Process-RFGData {
         
         $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}AR*.csv" | Select-Object -First 1
         if ($csvFile) {
-            $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-            $queryTable.TextFileCommaDelimiter = $true
-            $queryTable.Refresh($false)
-            Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            try {
+                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
+                $queryTable.TextFileCommaDelimiter = $true
+                $queryTable.Refresh($false)
+                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            }
+            catch {
+                Write-Host "    WARNING: Failed to import CHA-REF data: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
         } else {
             Write-Host "    WARNING: No CHA-REF file found for $RFGName" -ForegroundColor Yellow
         }
@@ -73,10 +89,15 @@ function Process-RFGData {
         
         $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}BF*.csv" | Select-Object -First 1
         if ($csvFile) {
-            $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-            $queryTable.TextFileCommaDelimiter = $true
-            $queryTable.Refresh($false)
-            Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            try {
+                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
+                $queryTable.TextFileCommaDelimiter = $true
+                $queryTable.Refresh($false)
+                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            }
+            catch {
+                Write-Host "    WARNING: Failed to import CHB-FOR data: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
         } else {
             Write-Host "    WARNING: No CHB-FOR file found for $RFGName" -ForegroundColor Yellow
         }
@@ -88,10 +109,15 @@ function Process-RFGData {
         
         $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}BR*.csv" | Select-Object -First 1
         if ($csvFile) {
-            $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-            $queryTable.TextFileCommaDelimiter = $true
-            $queryTable.Refresh($false)
-            Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            try {
+                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
+                $queryTable.TextFileCommaDelimiter = $true
+                $queryTable.Refresh($false)
+                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+            }
+            catch {
+                Write-Host "    WARNING: Failed to import CHB-REF data: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
         } else {
             Write-Host "    WARNING: No CHB-REF file found for $RFGName" -ForegroundColor Yellow
         }
@@ -99,28 +125,62 @@ function Process-RFGData {
         # Save the processed file
         $outputFileName = "TVN-4-$TVNNumber-$RFGName.xlsx"
         $outputPath = Join-Path $RFGPath $outputFileName
-        $workbook.SaveAs($outputPath)
-        Write-Host "  Saved: $outputFileName" -ForegroundColor Green
+        Write-Host "  Saving: $outputFileName" -ForegroundColor Yellow
+        
+        try {
+            $workbook.SaveAs($outputPath)
+            Write-Host "  Saved: $outputFileName" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  WARNING: Failed to save $outputFileName`: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
         
         # Export CSV to main output folder
-        $exportWorksheet = $workbook.Worksheets.Item("Export.CSV")
-        $exportWorksheet.Activate()
+        Write-Host "  Exporting CSV..." -ForegroundColor Yellow
+        try {
+            $exportWorksheet = $workbook.Worksheets.Item("Export.CSV")
+            $exportWorksheet.Activate()
+            
+            $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
+            $workbook.SaveAs($csvOutputPath, 6) # 6 = CSV format
+            Write-Host "  Exported CSV: calibrate_rfg_$rfgNumber.csv" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  WARNING: Failed to export CSV: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
         
-        $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
-        $workbook.SaveAs($csvOutputPath, 6) # 6 = CSV format
-        Write-Host "  Exported CSV: calibrate_rfg_$rfgNumber.csv" -ForegroundColor Green
-        
-        $workbook.Close($false)
+        # Close workbook
+        if ($workbook) {
+            $workbook.Close($false)
+            $workbook = $null
+        }
         
     }
     catch {
         Write-Host "Error processing $RFGName`: $($_.Exception.Message)" -ForegroundColor Red
     }
     finally {
-        $excel.Quit()
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+        # Clean up Excel objects
+        if ($workbook) {
+            try { $workbook.Close($false) } catch { }
+            $workbook = $null
+        }
+        
+        if ($excel) {
+            try { 
+                $excel.Quit()
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+            } catch { }
+            $excel = $null
+        }
+        
+        # Force garbage collection
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
+        [System.GC]::Collect()
+        
+        # Small delay to ensure cleanup
+        Start-Sleep -Milliseconds 500
     }
 }
 
@@ -138,6 +198,9 @@ if (Test-Path $rfg0Path) {
 } else {
     Write-Host "RFG0 path not found: $rfg0Path" -ForegroundColor Red
 }
+
+# Small delay between processing RFG0 and RFG1
+Start-Sleep -Seconds 2
 
 # Process RFG1
 $rfg1Path = Join-Path $OutputPath "RFG1"
