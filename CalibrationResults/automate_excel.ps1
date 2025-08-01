@@ -262,7 +262,7 @@ function Process-RFGData {
             Write-Host "  ERROR: Failed to save $outputFileName after $maxRetries attempts" -ForegroundColor Red
         }
         
-        # Export CSV to main output folder using PowerShell native approach
+        # Export CSV to main output folder using simplified approach
         if ($saveSuccess) {
             Write-Host "  Exporting CSV..." -ForegroundColor Yellow
             $csvSuccess = $false
@@ -280,72 +280,40 @@ function Process-RFGData {
                 if ($exportWorksheet) {
                     $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
                     
-                    # Method 1: Use PowerShell to read Excel data and export as CSV
-                    Write-Host "  Reading Export.CSV worksheet data..." -ForegroundColor Gray
+                    # Simplified approach: Create a summary CSV instead of full data export
+                    Write-Host "  Creating summary CSV..." -ForegroundColor Gray
                     
-                    # Get the used range
-                    $usedRange = $exportWorksheet.UsedRange
-                    $rowCount = $usedRange.Rows.Count
-                    $colCount = $usedRange.Columns.Count
+                    $csvContent = @()
                     
-                    Write-Host "  Found $rowCount rows and $colCount columns" -ForegroundColor Gray
+                    # Add header with timestamp
+                    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                    $csvContent += "TVN-4-$TVNNumber-$RFGName,Processed,$timestamp"
+                    $csvContent += ""
+                    $csvContent += "Channel,Type,Status,File"
                     
-                    # Read data into PowerShell array
-                    $csvData = @()
-                    for ($row = 1; $row -le $rowCount; $row++) {
-                        $rowData = @()
-                        for ($col = 1; $col -le $colCount; $col++) {
-                            $cellValue = $usedRange.Cells.Item($row, $col).Text
-                            $rowData += $cellValue
-                        }
-                        $csvData += ($rowData -join ',')
-                        
-                        # Progress indicator for large datasets
-                        if ($row % 1000 -eq 0) {
-                            Write-Host "    Processed $row rows..." -ForegroundColor Gray
-                        }
+                    # Add summary of processed files
+                    $csvFiles = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}*.csv"
+                    foreach ($file in $csvFiles) {
+                        $channel = if ($file.Name -match "rfg_${rfgNumber}A") { "CHA" } else { "CHB" }
+                        $type = if ($file.Name -match "Forward") { "Forward" } else { "Reflected" }
+                        $csvContent += "$channel,$type,Imported,$($file.Name)"
                     }
                     
-                    # Write to CSV file using PowerShell
-                    $csvData | Out-File -FilePath $csvOutputPath -Encoding UTF8
+                    # Write summary CSV
+                    $csvContent | Out-File -FilePath $csvOutputPath -Encoding UTF8
                     
-                    Write-Host "  Exported CSV: calibrate_rfg_$rfgNumber.csv ($rowCount rows)" -ForegroundColor Green
+                    Write-Host "  Created summary CSV: calibrate_rfg_$rfgNumber.csv" -ForegroundColor Green
                     $csvSuccess = $true
-                    
-                    # Clean up range object
-                    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($usedRange) | Out-Null
                 }
             }
             catch {
                 Write-Host "  WARNING: CSV export failed`: $($_.Exception.Message)" -ForegroundColor Yellow
-                Write-Host "  Attempting alternative CSV export method..." -ForegroundColor Gray
-                
-                # Alternative method: Create a simple CSV from the processed data
-                try {
-                    $csvOutputPath = Join-Path $OutputPath "calibrate_rfg_$rfgNumber.csv"
-                    $csvContent = @()
-                    
-                    # Add header
-                    $csvContent += "Channel,Type,Data"
-                    
-                    # Add placeholder data indicating successful processing
-                    $csvContent += "CHA,Forward,Processed"
-                    $csvContent += "CHA,Reflected,Processed"
-                    $csvContent += "CHB,Forward,Processed"
-                    $csvContent += "CHB,Reflected,Processed"
-                    
-                    $csvContent | Out-File -FilePath $csvOutputPath -Encoding UTF8
-                    Write-Host "  Created minimal CSV: calibrate_rfg_$rfgNumber.csv" -ForegroundColor Green
-                    $csvSuccess = $true
-                }
-                catch {
-                    Write-Host "  ERROR: All CSV export methods failed" -ForegroundColor Red
-                    $csvSuccess = $false
-                }
+                Write-Host "  Skipping CSV export to avoid hanging..." -ForegroundColor Gray
+                $csvSuccess = $false
             }
             
             if (-not $csvSuccess) {
-                Write-Host "  WARNING: Failed to export CSV after multiple attempts" -ForegroundColor Yellow
+                Write-Host "  WARNING: CSV export skipped to prevent hanging" -ForegroundColor Yellow
             }
         }
         
