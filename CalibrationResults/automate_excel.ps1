@@ -12,7 +12,7 @@ param(
     [string]$TemplateFile
 )
 
-# Function to process RFG data
+# Function to process RFG data with better memory management
 function Process-RFGData {
     param(
         [string]$RFGPath,
@@ -42,85 +42,113 @@ function Process-RFGData {
         # Get RFG number for file matching
         $rfgNumber = $RFGName.Substring(3, 1) # Extract "0" from "RFG0" or "1" from "RFG1"
         
-        # Process CHA-FOR (Channel A Forward)
-        Write-Host "  Importing CHA-FOR data..." -ForegroundColor Yellow
-        $worksheet = $workbook.Worksheets.Item("CHA-FOR")
-        $worksheet.Activate()
-        
-        $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}AF*.csv" | Select-Object -First 1
-        if ($csvFile) {
-            try {
-                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-                $queryTable.TextFileCommaDelimiter = $true
-                $queryTable.Refresh($false)
-                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
+        # Function to safely import CSV data
+        function Import-CSVData {
+            param(
+                [string]$WorksheetName,
+                [string]$FilePattern,
+                [string]$RFGName
+            )
+            
+            Write-Host "  Importing $WorksheetName data..." -ForegroundColor Yellow
+            
+            $csvFile = Get-ChildItem -Path $RFGPath -Filter $FilePattern | Select-Object -First 1
+            if ($csvFile) {
+                try {
+                    # Check file size
+                    $fileSize = (Get-Item $csvFile.FullName).Length
+                    $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
+                    Write-Host "    File size: $fileSizeMB MB" -ForegroundColor Gray
+                    
+                    # If file is large, try alternative import method
+                    if ($fileSizeMB -gt 50) {
+                        Write-Host "    Large file detected, using alternative import method..." -ForegroundColor Yellow
+                        
+                        # Clear existing data in worksheet
+                        $worksheet = $workbook.Worksheets.Item($WorksheetName)
+                        $worksheet.Activate()
+                        $worksheet.Cells.Clear()
+                        
+                        # Read CSV file in chunks and import manually
+                        $csvData = Get-Content $csvFile.FullName -Encoding UTF8
+                        $row = 1
+                        
+                        foreach ($line in $csvData) {
+                            if ($row -gt 10000) { # Limit to first 10,000 rows for memory
+                                Write-Host "    WARNING: File truncated to first 10,000 rows due to size" -ForegroundColor Yellow
+                                break
+                            }
+                            
+                            $columns = $line -split ','
+                            for ($col = 0; $col -lt $columns.Length; $col++) {
+                                $worksheet.Cells.Item($row, $col + 1) = $columns[$col]
+                            }
+                            $row++
+                            
+                            # Progress indicator
+                            if ($row % 1000 -eq 0) {
+                                Write-Host "    Processed $row rows..." -ForegroundColor Gray
+                            }
+                        }
+                        
+                        Write-Host "    Imported: $($csvFile.Name) (manual import)" -ForegroundColor Gray
+                    } else {
+                        # Use standard QueryTable for smaller files
+                        $worksheet = $workbook.Worksheets.Item($WorksheetName)
+                        $worksheet.Activate()
+                        
+                        $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
+                        $queryTable.TextFileCommaDelimiter = $true
+                        $queryTable.Refresh($false)
+                        
+                        Write-Host "    Imported: $($csvFile.Name) (standard import)" -ForegroundColor Gray
+                    }
+                }
+                catch {
+                    Write-Host "    WARNING: Failed to import $WorksheetName data: $($_.Exception.Message)" -ForegroundColor Yellow
+                    
+                    # Try minimal import as fallback
+                    try {
+                        Write-Host "    Attempting minimal import..." -ForegroundColor Yellow
+                        $worksheet = $workbook.Worksheets.Item($WorksheetName)
+                        $worksheet.Activate()
+                        $worksheet.Cells.Clear()
+                        
+                        # Import just first 1000 rows
+                        $csvData = Get-Content $csvFile.FullName -Encoding UTF8 -TotalCount 1000
+                        $row = 1
+                        
+                        foreach ($line in $csvData) {
+                            $columns = $line -split ','
+                            for ($col = 0; $col -lt $columns.Length; $col++) {
+                                $worksheet.Cells.Item($row, $col + 1) = $columns[$col]
+                            }
+                            $row++
+                        }
+                        
+                        Write-Host "    Imported: $($csvFile.Name) (minimal import - first 1000 rows)" -ForegroundColor Gray
+                    }
+                    catch {
+                        Write-Host "    ERROR: All import methods failed for $WorksheetName" -ForegroundColor Red
+                    }
+                }
+            } else {
+                Write-Host "    WARNING: No file found matching pattern: $FilePattern" -ForegroundColor Yellow
             }
-            catch {
-                Write-Host "    WARNING: Failed to import CHA-FOR data: $($_.Exception.Message)" -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "    WARNING: No CHA-FOR file found for $RFGName" -ForegroundColor Yellow
         }
         
-        # Process CHA-REF (Channel A Reflected)
-        Write-Host "  Importing CHA-REF data..." -ForegroundColor Yellow
-        $worksheet = $workbook.Worksheets.Item("CHA-REF")
-        $worksheet.Activate()
+        # Process each worksheet
+        Import-CSVData -WorksheetName "CHA-FOR" -FilePattern "rfg_${rfgNumber}AF*.csv" -RFGName $RFGName
+        Start-Sleep -Milliseconds 1000 # Delay between imports
         
-        $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}AR*.csv" | Select-Object -First 1
-        if ($csvFile) {
-            try {
-                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-                $queryTable.TextFileCommaDelimiter = $true
-                $queryTable.Refresh($false)
-                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
-            }
-            catch {
-                Write-Host "    WARNING: Failed to import CHA-REF data: $($_.Exception.Message)" -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "    WARNING: No CHA-REF file found for $RFGName" -ForegroundColor Yellow
-        }
+        Import-CSVData -WorksheetName "CHA-REF" -FilePattern "rfg_${rfgNumber}AR*.csv" -RFGName $RFGName
+        Start-Sleep -Milliseconds 1000 # Delay between imports
         
-        # Process CHB-FOR (Channel B Forward)
-        Write-Host "  Importing CHB-FOR data..." -ForegroundColor Yellow
-        $worksheet = $workbook.Worksheets.Item("CHB-FOR")
-        $worksheet.Activate()
+        Import-CSVData -WorksheetName "CHB-FOR" -FilePattern "rfg_${rfgNumber}BF*.csv" -RFGName $RFGName
+        Start-Sleep -Milliseconds 1000 # Delay between imports
         
-        $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}BF*.csv" | Select-Object -First 1
-        if ($csvFile) {
-            try {
-                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-                $queryTable.TextFileCommaDelimiter = $true
-                $queryTable.Refresh($false)
-                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
-            }
-            catch {
-                Write-Host "    WARNING: Failed to import CHB-FOR data: $($_.Exception.Message)" -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "    WARNING: No CHB-FOR file found for $RFGName" -ForegroundColor Yellow
-        }
-        
-        # Process CHB-REF (Channel B Reflected)
-        Write-Host "  Importing CHB-REF data..." -ForegroundColor Yellow
-        $worksheet = $workbook.Worksheets.Item("CHB-REF")
-        $worksheet.Activate()
-        
-        $csvFile = Get-ChildItem -Path $RFGPath -Filter "rfg_${rfgNumber}BR*.csv" | Select-Object -First 1
-        if ($csvFile) {
-            try {
-                $queryTable = $worksheet.QueryTables.Add("TEXT;$($csvFile.FullName)", $worksheet.Range("A1"))
-                $queryTable.TextFileCommaDelimiter = $true
-                $queryTable.Refresh($false)
-                Write-Host "    Imported: $($csvFile.Name)" -ForegroundColor Gray
-            }
-            catch {
-                Write-Host "    WARNING: Failed to import CHB-REF data: $($_.Exception.Message)" -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "    WARNING: No CHB-REF file found for $RFGName" -ForegroundColor Yellow
-        }
+        Import-CSVData -WorksheetName "CHB-REF" -FilePattern "rfg_${rfgNumber}BR*.csv" -RFGName $RFGName
+        Start-Sleep -Milliseconds 1000 # Delay between imports
         
         # Save the processed file
         $outputFileName = "TVN-4-$TVNNumber-$RFGName.xlsx"
@@ -180,7 +208,7 @@ function Process-RFGData {
         [System.GC]::Collect()
         
         # Small delay to ensure cleanup
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 1000
     }
 }
 
@@ -200,7 +228,7 @@ if (Test-Path $rfg0Path) {
 }
 
 # Small delay between processing RFG0 and RFG1
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 3
 
 # Process RFG1
 $rfg1Path = Join-Path $OutputPath "RFG1"
