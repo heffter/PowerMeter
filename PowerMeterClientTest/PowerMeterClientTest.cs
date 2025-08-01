@@ -10,37 +10,64 @@ namespace PowerMeterClientTest
     // Data models for API responses
     public class PowerReading
     {
+        [JsonProperty("timestamp")]
         public double Timestamp { get; set; }
+        
+        [JsonProperty("forward_power")]
         public double ForwardPower { get; set; }
+        
+        [JsonProperty("reflected_power")]
         public double ReflectedPower { get; set; }
+        
+        [JsonProperty("vswr")]
         public double Vswr { get; set; }
     }
 
     public class ServerStatus
     {
+        [JsonProperty("device_connected")]
         public bool DeviceConnected { get; set; }
+        
+        [JsonProperty("simulation_mode")]
         public bool SimulationMode { get; set; }
+        
+        [JsonProperty("monitoring")]
         public bool Monitoring { get; set; }
+        
+        [JsonProperty("acquisition_frequency_ms")]
         public int AcquisitionFrequencyMs { get; set; }
+        
+        [JsonProperty("data_points")]
         public int DataPoints { get; set; }
     }
 
     public class DeviceInfo
     {
+        [JsonProperty("resource")]
         public string Resource { get; set; }
+        
+        [JsonProperty("identity")]
         public string Identity { get; set; }
+        
+        [JsonProperty("is_n1914a")]
         public bool IsN1914A { get; set; }
     }
 
     public class DeviceListResponse
     {
+        [JsonProperty("success")]
         public bool Success { get; set; }
+        
+        [JsonProperty("devices")]
         public List<DeviceInfo> Devices { get; set; }
     }
 
     public class ApiResponse
     {
+        [JsonProperty("success")]
         public bool Success { get; set; }
+        
+        [JsonProperty("message")]
         public string Message { get; set; }
     }
 
@@ -296,11 +323,11 @@ namespace PowerMeterClientTest
                 var statusAsync = await client.GetStatusAsync();
                 if (statusAsync != null)
                 {
-                    Console.WriteLine($"✓ Async Status: Device={statusAsync.DeviceConnected}, Simulation={statusAsync.SimulationMode}, Monitoring={statusAsync.Monitoring}");
+                    Console.WriteLine($"PASS Async Status: Device={statusAsync.DeviceConnected}, Simulation={statusAsync.SimulationMode}, Monitoring={statusAsync.Monitoring}");
                 }
                 else
                 {
-                    Console.WriteLine("✗ Async Status: Failed to get status");
+                    Console.WriteLine("FAIL Async Status: Failed to get status");
                 }
                 Console.WriteLine();
 
@@ -309,11 +336,11 @@ namespace PowerMeterClientTest
                 var statusSync = client.GetStatus();
                 if (statusSync != null)
                 {
-                    Console.WriteLine($"✓ Sync Status: Device={statusSync.DeviceConnected}, Simulation={statusSync.SimulationMode}, Monitoring={statusSync.Monitoring}");
+                    Console.WriteLine($"PASS Sync Status: Device={statusSync.DeviceConnected}, Simulation={statusSync.SimulationMode}, Monitoring={statusSync.Monitoring}");
                 }
                 else
                 {
-                    Console.WriteLine("✗ Sync Status: Failed to get status");
+                    Console.WriteLine("FAIL Sync Status: Failed to get status");
                 }
                 Console.WriteLine();
 
@@ -322,11 +349,11 @@ namespace PowerMeterClientTest
                 var powerAsync = await client.GetCurrentPowerAsync();
                 if (powerAsync != null)
                 {
-                    Console.WriteLine($"✓ Async Power: Forward={powerAsync.ForwardPower:F2}W, Reflected={powerAsync.ReflectedPower:F2}W, VSWR={powerAsync.Vswr:F2}");
+                    Console.WriteLine($"PASS Async Power: Forward={powerAsync.ForwardPower:F2}W, Reflected={powerAsync.ReflectedPower:F2}W, VSWR={powerAsync.Vswr:F2}");
                 }
                 else
                 {
-                    Console.WriteLine("✗ Async Power: Failed to get power reading");
+                    Console.WriteLine("FAIL Async Power: Failed to get power reading");
                 }
                 Console.WriteLine();
 
@@ -335,11 +362,11 @@ namespace PowerMeterClientTest
                 var powerSync = client.GetCurrentPower();
                 if (powerSync != null)
                 {
-                    Console.WriteLine($"✓ Sync Power: Forward={powerSync.ForwardPower:F2}W, Reflected={powerSync.ReflectedPower:F2}W, VSWR={powerSync.Vswr:F2}");
+                    Console.WriteLine($"PASS Sync Power: Forward={powerSync.ForwardPower:F2}W, Reflected={powerSync.ReflectedPower:F2}W, VSWR={powerSync.Vswr:F2}");
                 }
                 else
                 {
-                    Console.WriteLine("✗ Sync Power: Failed to get power reading");
+                    Console.WriteLine("FAIL Sync Power: Failed to get power reading");
                 }
                 Console.WriteLine();
 
@@ -348,7 +375,7 @@ namespace PowerMeterClientTest
                 var devicesAsync = await client.ListDevicesAsync();
                 if (devicesAsync?.Success == true)
                 {
-                    Console.WriteLine($"✓ Async Devices: Found {devicesAsync.Devices?.Count ?? 0} devices");
+                    Console.WriteLine($"PASS Async Devices: Found {devicesAsync.Devices?.Count ?? 0} devices");
                     if (devicesAsync.Devices != null)
                     {
                         foreach (var device in devicesAsync.Devices)
@@ -359,7 +386,7 @@ namespace PowerMeterClientTest
                 }
                 else
                 {
-                    Console.WriteLine("✗ Async Devices: Failed to get devices");
+                    Console.WriteLine("FAIL Async Devices: Failed to get devices");
                 }
                 Console.WriteLine();
 
@@ -368,7 +395,7 @@ namespace PowerMeterClientTest
                 var devicesSync = client.ListDevices();
                 if (devicesSync?.Success == true)
                 {
-                    Console.WriteLine($"✓ Sync Devices: Found {devicesSync.Devices?.Count ?? 0} devices");
+                    Console.WriteLine($"PASS Sync Devices: Found {devicesSync.Devices?.Count ?? 0} devices");
                     if (devicesSync.Devices != null)
                     {
                         foreach (var device in devicesSync.Devices)
@@ -379,7 +406,7 @@ namespace PowerMeterClientTest
                 }
                 else
                 {
-                    Console.WriteLine("✗ Sync Devices: Failed to get devices");
+                    Console.WriteLine("FAIL Sync Devices: Failed to get devices");
                 }
                 Console.WriteLine();
 
@@ -388,11 +415,11 @@ namespace PowerMeterClientTest
                 var connectAsync = await client.ConnectToDeviceAsync("");
                 if (connectAsync?.Success == true)
                 {
-                    Console.WriteLine($"✓ Async Connect: {connectAsync.Message}");
+                    Console.WriteLine($"PASS Async Connect: {connectAsync.Message}");
                 }
                 else
                 {
-                    Console.WriteLine($"✗ Async Connect: {connectAsync?.Message ?? "Unknown error"}");
+                    Console.WriteLine($"FAIL Async Connect: {connectAsync?.Message ?? "Unknown error"}");
                 }
                 Console.WriteLine();
 
@@ -401,11 +428,11 @@ namespace PowerMeterClientTest
                 var connectSync = client.ConnectToDevice("");
                 if (connectSync?.Success == true)
                 {
-                    Console.WriteLine($"✓ Sync Connect: {connectSync.Message}");
+                    Console.WriteLine($"PASS Sync Connect: {connectSync.Message}");
                 }
                 else
                 {
-                    Console.WriteLine($"✗ Sync Connect: {connectSync?.Message ?? "Unknown error"}");
+                    Console.WriteLine($"FAIL Sync Connect: {connectSync?.Message ?? "Unknown error"}");
                 }
                 Console.WriteLine();
 

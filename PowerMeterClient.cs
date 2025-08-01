@@ -10,36 +10,64 @@ namespace PowerMeterClient
   // Data models for API responses
   public class PowerReading
   {
+    [JsonProperty("timestamp")]
     public double Timestamp { get; set; }
+    
+    [JsonProperty("forward_power")]
     public double ForwardPower { get; set; }
+    
+    [JsonProperty("reflected_power")]
     public double ReflectedPower { get; set; }
+    
+    [JsonProperty("vswr")]
+    public double Vswr { get; set; }
   }
 
   public class ServerStatus
   {
+    [JsonProperty("device_connected")]
     public bool DeviceConnected { get; set; }
+    
+    [JsonProperty("simulation_mode")]
     public bool SimulationMode { get; set; }
+    
+    [JsonProperty("monitoring")]
     public bool Monitoring { get; set; }
+    
+    [JsonProperty("acquisition_frequency_ms")]
     public int AcquisitionFrequencyMs { get; set; }
+    
+    [JsonProperty("data_points")]
     public int DataPoints { get; set; }
   }
 
   public class DeviceInfo
   {
+    [JsonProperty("resource")]
     public string Resource { get; set; }
+    
+    [JsonProperty("identity")]
     public string Identity { get; set; }
+    
+    [JsonProperty("is_n1914a")]
     public bool IsN1914A { get; set; }
   }
 
   public class DeviceListResponse
   {
+    [JsonProperty("success")]
     public bool Success { get; set; }
+    
+    [JsonProperty("devices")]
     public List<DeviceInfo> Devices { get; set; }
   }
 
   public class ApiResponse
   {
+    [JsonProperty("success")]
     public bool Success { get; set; }
+    
+    [JsonProperty("message")]
     public string Message { get; set; }
   }
 
