@@ -142,34 +142,6 @@ class PowerMonitor:
         self.api_server = Flask(__name__)
         CORS(self.api_server)
         
-        # Completely disable Flask logging to suppress API call printouts
-        import logging
-        import sys
-        
-        # Disable werkzeug logger (Flask's underlying WSGI server)
-        werkzeug_logger = logging.getLogger('werkzeug')
-        werkzeug_logger.disabled = True
-        werkzeug_logger.setLevel(logging.ERROR)
-        
-        # Disable Flask's default logger
-        self.api_server.logger.disabled = True
-        
-        # Disable all Flask-related loggers
-        logging.getLogger('flask').disabled = True
-        logging.getLogger('flask_cors').disabled = True
-        
-        # Suppress stdout for Flask server
-        class SuppressOutput:
-            def write(self, text):
-                pass
-            def flush(self):
-                pass
-        
-        # Only suppress Flask output, not our application output
-        import os
-        if 'FLASK_ENV' not in os.environ:
-            os.environ['FLASK_ENV'] = 'production'
-        
         @self.api_server.route('/api/status', methods=['GET'])
         def get_status():
             return jsonify({
@@ -289,7 +261,7 @@ class PowerMonitor:
             port = self.config["api_server"]["port"]
             
             def run_server():
-                self.api_server.run(host=host, port=port, debug=False, use_reloader=False, log_output=False)
+                self.api_server.run(host=host, port=port, debug=False, use_reloader=False)
             
             self.api_thread = threading.Thread(target=run_server, daemon=True)
             self.api_thread.start()
