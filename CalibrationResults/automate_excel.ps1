@@ -64,7 +64,8 @@ function Process-RFGData {
         [string]$RFGPath,
         [string]$RFGName,
         [string]$TVNNumber,
-        [string]$TemplateFile
+        [string]$TemplateFile,
+        [string]$OutputPath
     )
     
     Write-Host "Processing $RFGName data..." -ForegroundColor Green
@@ -282,6 +283,7 @@ function Process-RFGData {
                     
                     # Simplified approach: Create a summary CSV instead of full data export
                     Write-Host "  Creating summary CSV..." -ForegroundColor Gray
+                    Write-Host "  CSV output path: $csvOutputPath" -ForegroundColor Gray
                     
                     $csvContent = @()
                     
@@ -366,7 +368,7 @@ Kill-ExcelProcesses
 # Process RFG0
 $rfg0Path = Join-Path $OutputPath "RFG0"
 if (Test-Path $rfg0Path) {
-    Process-RFGData -RFGPath $rfg0Path -RFGName "RFG0" -TVNNumber $TVNNumber -TemplateFile $TemplateFile
+    Process-RFGData -RFGPath $rfg0Path -RFGName "RFG0" -TVNNumber $TVNNumber -TemplateFile $TemplateFile -OutputPath $OutputPath
 } else {
     Write-Host "RFG0 path not found: $rfg0Path" -ForegroundColor Red
 }
@@ -377,7 +379,7 @@ Start-Sleep -Seconds 3
 # Process RFG1
 $rfg1Path = Join-Path $OutputPath "RFG1"
 if (Test-Path $rfg1Path) {
-    Process-RFGData -RFGPath $rfg1Path -RFGName "RFG1" -TVNNumber $TVNNumber -TemplateFile $TemplateFile
+    Process-RFGData -RFGPath $rfg1Path -RFGName "RFG1" -TVNNumber $TVNNumber -TemplateFile $TemplateFile -OutputPath $OutputPath
 } else {
     Write-Host "RFG1 path not found: $rfg1Path" -ForegroundColor Red
 }
