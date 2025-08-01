@@ -24,7 +24,7 @@ The automation performs all the manual steps from the ToDo.txt file:
 - Handles the conversion from log to CSV format
 
 ### Step 2: File Preparation
-- Creates folder structure: `C:\TVN-4-XXXX\RFG0\` and `C:\TVN-4-XXXX\RFG1\`
+- Creates folder structure: `C:\AMS\Remote_Control\log\TVN-4-XXXX-YYYY-MM-DD\RFG0\` and `C:\AMS\Remote_Control\log\TVN-4-XXXX-YYYY-MM-DD\RFG1\`
 - Automatically finds and copies any Excel template file (.xltx or .xlsx) to both RFG folders
 - Intelligently copies CSV files based on naming convention:
   - Files starting with `rfg_0` → RFG0 folder
@@ -42,7 +42,7 @@ The automation performs all the manual steps from the ToDo.txt file:
 ### Step 4: CSV Export
 - Exports processed data as CSV files
 - Creates `calibrate_rfg_0.csv` and `calibrate_rfg_1.csv`
-- Saves to main output folder `C:\TVN-4-XXXX\`
+- Saves to main output folder `C:\AMS\Remote_Control\log\TVN-4-XXXX-YYYY-MM-DD\`
 
 ## Usage Instructions
 
@@ -59,7 +59,7 @@ automate_calibration.bat
 
 ### Method 3: PowerShell Direct
 ```powershell
-powershell -ExecutionPolicy Bypass -File "automate_excel.ps1" -TVNNumber "0106" -BasePath "C:\AMS\Remote_Control\log" -OutputPath "C:\TVN-4-0106" -TemplateFile "RF_Power_Calibrate_Template-0.25-1.2MHz.xltx"
+powershell -ExecutionPolicy Bypass -File "automate_excel.ps1" -TVNNumber "0106" -BasePath "C:\AMS\Remote_Control\log" -OutputPath "C:\AMS\Remote_Control\log\TVN-4-0106-2025-01-01" -TemplateFile "RF_Power_Calibrate_Template-0.25-1.2MHz.xltx"
 ```
 
 ## File Structure Expected
@@ -93,17 +93,18 @@ The automation intelligently parses file names:
 
 ### Output Structure
 ```
-C:\TVN-4-XXXX\
-├── RFG0\
-│   ├── [Template File].xltx
-│   ├── rfg_0AF*.csv, rfg_0AR*.csv, rfg_0BF*.csv, rfg_0BR*.csv
-│   └── TVN-4-XXXX-RFG0.xlsx
-├── RFG1\
-│   ├── [Template File].xltx
-│   ├── rfg_1AF*.csv, rfg_1AR*.csv, rfg_1BF*.csv, rfg_1BR*.csv
-│   └── TVN-4-XXXX-RFG1.xlsx
-├── calibrate_rfg_0.csv
-└── calibrate_rfg_1.csv
+C:\AMS\Remote_Control\log\
+└── TVN-4-XXXX-YYYY-MM-DD\
+    ├── RFG0\
+    │   ├── [Template File].xltx
+    │   ├── rfg_0AF*.csv, rfg_0AR*.csv, rfg_0BF*.csv, rfg_0BR*.csv
+    │   └── TVN-4-XXXX-RFG0.xlsx
+    ├── RFG1\
+    │   ├── [Template File].xltx
+    │   ├── rfg_1AF*.csv, rfg_1AR*.csv, rfg_1BF*.csv, rfg_1BR*.csv
+    │   └── TVN-4-XXXX-RFG1.xlsx
+    ├── calibrate_rfg_0.csv
+    └── calibrate_rfg_1.csv
 ```
 
 ## Troubleshooting

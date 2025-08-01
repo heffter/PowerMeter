@@ -114,7 +114,7 @@ function Process-RFGData {
         
     }
     catch {
-        Write-Host "Error processing $RFGName: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Error processing $RFGName`: $($_.Exception.Message)" -ForegroundColor Red
     }
     finally {
         $excel.Quit()

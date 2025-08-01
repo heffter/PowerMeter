@@ -8,9 +8,16 @@ echo.
 :: Get TVN system number from user
 set /p TVN_NUMBER="Enter TVN system number (e.g., 0106): "
 
+:: Get current date in YYYY-MM-DD format
+for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
+set "YEAR=%dt:~0,4%"
+set "MONTH=%dt:~4,2%"
+set "DAY=%dt:~6,2%"
+set "DATE_FOLDER=%YEAR%-%MONTH%-%DAY%"
+
 :: Set base paths
 set BASE_PATH=C:\AMS\Remote_Control\log
-set OUTPUT_PATH=C:\TVN-4-%TVN_NUMBER%
+set OUTPUT_PATH=%BASE_PATH%\TVN-4-%TVN_NUMBER%-%DATE_FOLDER%
 set RFG0_PATH=%OUTPUT_PATH%\RFG0
 set RFG1_PATH=%OUTPUT_PATH%\RFG1
 
