@@ -250,6 +250,31 @@ class PowerMonitor:
                     'message': f'Failed to list devices: {str(e)}'
                 }), 500
 
+        @self.api_server.route('/api/peak', methods=['GET'])
+        def get_peak_power():
+            gate_delay_s = request.args.get('gate_delay_s', type=float, default=0.0)
+            gate_time_s = request.args.get('gate_time_s', type=float, default=0.0006)
+            channel = request.args.get('channel', type=int, default=1)
+            if self.simulation_mode:
+                import random as _r
+                return jsonify({
+                    'peak_power': round(_r.uniform(1.0, 30.0), 3),
+                    'gate_delay_s': gate_delay_s,
+                    'gate_time_s': gate_time_s,
+                    'channel': channel,
+                    'simulation': True
+                })
+            power = self.measure_peak_pulse_power(
+                channel=channel, gate_delay_s=gate_delay_s, gate_time_s=gate_time_s)
+            if power is None:
+                return jsonify({'success': False, 'message': 'Peak measurement failed'}), 500
+            return jsonify({
+                'peak_power': round(power, 4),
+                'gate_delay_s': gate_delay_s,
+                'gate_time_s': gate_time_s,
+                'channel': channel
+            })
+
     def start_api_server(self):
         """Start the API server in a separate thread"""
         if self.api_running:
@@ -915,14 +940,40 @@ class PowerMonitor:
         try:
             # Read from Channel 1 (Forward Power) - using correct SCPI commands from programming guide
             forward_power = self.n1914a.query_ascii_values(":FETCh1:SCALar:POWer:AC?")[0]
-            
+
             # Read from Channel 2 (Reflected Power) - using correct SCPI commands from programming guide
             reflected_power = self.n1914a.query_ascii_values(":FETCh2:SCALar:POWer:AC?")[0]
-            
+
             return (float(forward_power), float(reflected_power))
         except Exception as e:
             print(f"Error reading power: {e}")
             self.device_connected = False
+            return None
+
+    def measure_peak_pulse_power(self, channel: int = 1, gate_delay_s: float = 0.0,
+                                 gate_time_s: float = 0.0006) -> Optional[float]:
+        """Measure average power during the pulse ON window using time-gated statistics mode.
+
+        Requires a peak-capable diode sensor (N1921A/N1922A or U2000-series).
+        Thermocouple sensors (N8480-series) do not support time gating -- the call
+        will succeed but the result will be a plain average, not a gated average.
+
+        gate_delay_s: seconds from trigger to start of measurement gate (default 0).
+        gate_time_s:  gate duration in seconds (default 0.0006 = 0.6 ms for TheraVision
+                      250 pps / 0.6 ms ON pulse configuration).
+        """
+        if not self.n1914a or not self.device_connected:
+            return None
+        try:
+            ch = str(channel)
+            self.n1914a.write(f":SENSe{ch}:MSTat:STATe ON")
+            self.n1914a.write(f":SENSe{ch}:MSTat:TRIG:DELay {gate_delay_s:.6f}")
+            self.n1914a.write(f":SENSe{ch}:MSTat:GATE:TIME {gate_time_s:.6f}")
+            power = float(self.n1914a.query(f":FETCh{ch}:SCALar:POWer:AC?"))
+            self.n1914a.write(f":SENSe{ch}:MSTat:STATe OFF")
+            return power
+        except Exception as e:
+            print(f"Error measuring peak pulse power: {e}")
             return None
 
     def start_monitoring(self):

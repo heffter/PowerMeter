@@ -23,6 +23,24 @@ namespace PowerMeterClient
     public double Vswr { get; set; }
   }
 
+  public class PeakPowerReading
+  {
+    [JsonProperty("peak_power")]
+    public double PeakPower { get; set; }
+
+    [JsonProperty("gate_delay_s")]
+    public double GateDelayS { get; set; }
+
+    [JsonProperty("gate_time_s")]
+    public double GateTimeS { get; set; }
+
+    [JsonProperty("channel")]
+    public int Channel { get; set; }
+
+    [JsonProperty("simulation")]
+    public bool Simulation { get; set; }
+  }
+
   public class ServerStatus
   {
     [JsonProperty("device_connected")]
@@ -116,6 +134,50 @@ namespace PowerMeterClient
       catch (Exception ex)
       {
         Console.WriteLine($"Error getting current power: {ex.Message}");
+        return null;
+      }
+    }
+
+    /// <summary>
+    /// Get time-gated peak pulse power reading from the N1914A.
+    /// Requires a peak-capable diode sensor (N1921A/N1922A or U2000-series).
+    /// gateDelayS: seconds from trigger to start of measurement gate.
+    /// gateTimeS:  gate duration in seconds (default 0.0006 = 0.6 ms for 250 pps TheraVision pulses).
+    /// </summary>
+    public async Task<PeakPowerReading> GetPeakPowerAsync(
+        int channel = 1, double gateDelayS = 0.0, double gateTimeS = 0.0006)
+    {
+      try
+      {
+        var url = $"{_baseUrl}/api/peak?channel={channel}&gate_delay_s={gateDelayS:F6}&gate_time_s={gateTimeS:F6}";
+        var response = await _httpClient.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonConvert.DeserializeObject<PeakPowerReading>(json);
+      }
+      catch (Exception ex)
+      {
+        Console.WriteLine($"Error getting peak power: {ex.Message}");
+        return null;
+      }
+    }
+
+    public PeakPowerReading GetPeakPower(
+        int channel = 1, double gateDelayS = 0.0, double gateTimeS = 0.0006)
+    {
+      try
+      {
+        var url = $"{_baseUrl}/api/peak?channel={channel}&gate_delay_s={gateDelayS:F6}&gate_time_s={gateTimeS:F6}";
+        var response = _httpClient.GetAsync(url).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+
+        var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+        return JsonConvert.DeserializeObject<PeakPowerReading>(json);
+      }
+      catch (Exception ex)
+      {
+        Console.WriteLine($"Error getting peak power: {ex.Message}");
         return null;
       }
     }
