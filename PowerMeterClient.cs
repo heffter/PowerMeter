@@ -28,11 +28,8 @@ namespace PowerMeterClient
     [JsonProperty("peak_power")]
     public double PeakPower { get; set; }
 
-    [JsonProperty("gate_delay_s")]
-    public double GateDelayS { get; set; }
-
-    [JsonProperty("gate_time_s")]
-    public double GateTimeS { get; set; }
+    [JsonProperty("duty_cycle_pct")]
+    public double DutyCyclePct { get; set; }
 
     [JsonProperty("channel")]
     public int Channel { get; set; }
@@ -139,17 +136,17 @@ namespace PowerMeterClient
     }
 
     /// <summary>
-    /// Get time-gated peak pulse power reading from the N1914A.
-    /// Requires a peak-capable diode sensor (N1921A/N1922A or U2000-series).
-    /// gateDelayS: seconds from trigger to start of measurement gate.
-    /// gateTimeS:  gate duration in seconds (default 0.0006 = 0.6 ms for 250 pps TheraVision pulses).
+    /// Get peak-equivalent pulse power using duty-cycle correction.
+    /// The meter reads average power; the server divides by dutyCyclePct/100 to get
+    /// the on-time (peak) equivalent.  Works with any sensor type.
+    /// dutyCyclePct: duty cycle in percent (default 15.0 for 250 pps / 0.6 ms TheraVision pulses).
     /// </summary>
     public async Task<PeakPowerReading> GetPeakPowerAsync(
-        int channel = 1, double gateDelayS = 0.0, double gateTimeS = 0.0006)
+        int channel = 1, double dutyCyclePct = 15.0)
     {
       try
       {
-        var url = $"{_baseUrl}/api/peak?channel={channel}&gate_delay_s={gateDelayS:F6}&gate_time_s={gateTimeS:F6}";
+        var url = $"{_baseUrl}/api/peak?channel={channel}&duty_cycle_pct={dutyCyclePct:F2}";
         var response = await _httpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
 
@@ -163,12 +160,11 @@ namespace PowerMeterClient
       }
     }
 
-    public PeakPowerReading GetPeakPower(
-        int channel = 1, double gateDelayS = 0.0, double gateTimeS = 0.0006)
+    public PeakPowerReading GetPeakPower(int channel = 1, double dutyCyclePct = 15.0)
     {
       try
       {
-        var url = $"{_baseUrl}/api/peak?channel={channel}&gate_delay_s={gateDelayS:F6}&gate_time_s={gateTimeS:F6}";
+        var url = $"{_baseUrl}/api/peak?channel={channel}&duty_cycle_pct={dutyCyclePct:F2}";
         var response = _httpClient.GetAsync(url).GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
 

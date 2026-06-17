@@ -252,26 +252,23 @@ class PowerMonitor:
 
         @self.api_server.route('/api/peak', methods=['GET'])
         def get_peak_power():
-            gate_delay_s = request.args.get('gate_delay_s', type=float, default=0.0)
-            gate_time_s = request.args.get('gate_time_s', type=float, default=0.0006)
+            duty_cycle_pct = request.args.get('duty_cycle_pct', type=float, default=15.0)
             channel = request.args.get('channel', type=int, default=1)
             if self.simulation_mode:
                 import random as _r
                 return jsonify({
                     'peak_power': round(_r.uniform(1.0, 30.0), 3),
-                    'gate_delay_s': gate_delay_s,
-                    'gate_time_s': gate_time_s,
+                    'duty_cycle_pct': duty_cycle_pct,
                     'channel': channel,
                     'simulation': True
                 })
             power = self.measure_peak_pulse_power(
-                channel=channel, gate_delay_s=gate_delay_s, gate_time_s=gate_time_s)
+                channel=channel, duty_cycle_pct=duty_cycle_pct)
             if power is None:
                 return jsonify({'success': False, 'message': 'Peak measurement failed'}), 500
             return jsonify({
                 'peak_power': round(power, 4),
-                'gate_delay_s': gate_delay_s,
-                'gate_time_s': gate_time_s,
+                'duty_cycle_pct': duty_cycle_pct,
                 'channel': channel
             })
 
@@ -950,28 +947,27 @@ class PowerMonitor:
             self.device_connected = False
             return None
 
-    def measure_peak_pulse_power(self, channel: int = 1, gate_delay_s: float = 0.0,
-                                 gate_time_s: float = 0.0006) -> Optional[float]:
-        """Measure average power during the pulse ON window using time-gated statistics mode.
+    def measure_peak_pulse_power(self, channel: int = 1,
+                                 duty_cycle_pct: float = 15.0) -> Optional[float]:
+        """Measure peak-equivalent pulse power using duty-cycle correction.
 
-        Requires a peak-capable diode sensor (N1921A/N1922A or U2000-series).
-        Thermocouple sensors (N8480-series) do not support time gating -- the call
-        will succeed but the result will be a plain average, not a gated average.
+        Reads the continuous average power and divides by the duty cycle to obtain
+        the equivalent peak (ON-time) power.  Works with any sensor type --
+        thermocouple (N8480-series) and diode (U2000-series) both report correct
+        average power; no time-gating or statistics mode is required.
 
-        gate_delay_s: seconds from trigger to start of measurement gate (default 0).
-        gate_time_s:  gate duration in seconds (default 0.0006 = 0.6 ms for TheraVision
-                      250 pps / 0.6 ms ON pulse configuration).
+        duty_cycle_pct: duty cycle in percent (default 15.0 for the TheraVision
+                        250 pps / 0.6 ms ON pulse configuration: 0.6 ms * 250 = 15%).
+
+        Example: if the meter reads 1.5 W average at 15% duty cycle,
+                 peak_pulse_power = 1.5 / 0.15 = 10.0 W.
         """
         if not self.n1914a or not self.device_connected:
             return None
         try:
             ch = str(channel)
-            self.n1914a.write(f":SENSe{ch}:MSTat:STATe ON")
-            self.n1914a.write(f":SENSe{ch}:MSTat:TRIG:DELay {gate_delay_s:.6f}")
-            self.n1914a.write(f":SENSe{ch}:MSTat:GATE:TIME {gate_time_s:.6f}")
-            power = float(self.n1914a.query(f":FETCh{ch}:SCALar:POWer:AC?"))
-            self.n1914a.write(f":SENSe{ch}:MSTat:STATe OFF")
-            return power
+            avg_power = float(self.n1914a.query(f":FETCh{ch}:SCALar:POWer:AC?"))
+            return avg_power / (duty_cycle_pct / 100.0)
         except Exception as e:
             print(f"Error measuring peak pulse power: {e}")
             return None
