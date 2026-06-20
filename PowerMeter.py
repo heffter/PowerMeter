@@ -262,14 +262,26 @@ class PowerMonitor:
         def configure_pulse():
             if request.method == 'GET':
                 pulse_cfg = self.config.get("pulse", {})
+                # Query actual hardware state so the caller can verify a prior write took effect.
+                hw_state = {}
+                for ch in [1, 2]:
+                    q = self.query_pulse_measurement_mode(ch)
+                    if q is not None:
+                        hw_state[str(ch)] = q
+                    else:
+                        hw_state[str(ch)] = {
+                            "state": self.hw_duty_cycle_enabled.get(ch, False),
+                            "duty_cycle_pct": None
+                        }
                 return jsonify({
                     'duty_cycle_enabled': pulse_cfg.get("duty_cycle_enabled", False),
-                    'duty_cycle_pct': pulse_cfg.get("duty_cycle_pct", 15.0),
                     'repetition_rate_hz': pulse_cfg.get("repetition_rate_hz", 250),
                     'pulse_width_ms': pulse_cfg.get("pulse_width_ms", 0.6),
                     'hw_correction_active': {
-                        str(ch): self.hw_duty_cycle_enabled.get(ch, False)
-                        for ch in [1, 2]
+                        str(ch): hw_state[str(ch)]["state"] for ch in [1, 2]
+                    },
+                    'hw_duty_cycle_pct': {
+                        str(ch): hw_state[str(ch)]["duty_cycle_pct"] for ch in [1, 2]
                     }
                 })
 
@@ -409,15 +421,23 @@ class PowerMonitor:
 
     def setup_pulse_measurement_mode(self, channel: int, enabled: bool,
                                      duty_cycle_pct: float = 15.0) -> bool:
-        """Configure hardware duty cycle correction on the N1914A.
+        """Configure duty cycle (DCYCle/GAIN3) correction on the N1914A.
 
-        When enabled, the instrument applies the correction internally so that
-        FETCh? returns the peak-equivalent (ON-time) power directly.  The
-        duty cycle must match the actual pulse parameters of the RF signal.
+        When enabled the meter measures average power and divides internally by the
+        duty cycle, so FETCh? returns the equivalent peak (ON-time) power directly.
+        The duty cycle value must match the actual RF pulse parameters.
 
-        SCPI:
-          SENSe{ch}:CORRection:GAIN2:STATe ON|OFF
-          SENSe{ch}:CORRection:GAIN2:INPut:MAGNitude <ratio>  (0.001-1.000)
+        SCPI (N1913A/1914A Programming Guide, pp.376-381):
+          SENSe{ch}:CORRection:DCYCle <pct>PCT  -- value in percent, auto-enables STATe
+          SENSe{ch}:CORRection:DCYCle:STATe ON|OFF
+          Valid range: 0.001 to 99.999 PCT
+
+        NOTE: GAIN2 is a cable-loss offset (+/-100 dB) unrelated to duty cycle.
+              DCYCle (alias GAIN3) is the correct pulse-power correction command.
+
+        Caveat: if SENSe:SPEed is 200, writing DCYCle raises -221 "Settings Conflict"
+        and STATe is not auto-enabled.  An explicit STATe ON is sent after the value
+        to handle this edge case; use query_pulse_measurement_mode() to verify.
         """
         if not self.n1914a or not self.device_connected:
             self.hw_duty_cycle_enabled[channel] = False
@@ -425,16 +445,18 @@ class PowerMonitor:
         try:
             ch = str(channel)
             if enabled:
-                dc_ratio = duty_cycle_pct / 100.0
-                if not (0.001 <= dc_ratio <= 1.0):
-                    print(f"setup_pulse_measurement_mode: duty cycle {duty_cycle_pct}% out of range 0.1-100")
+                if not (0.001 <= duty_cycle_pct <= 99.999):
+                    print(f"setup_pulse_measurement_mode: duty cycle {duty_cycle_pct}% out of range 0.001-99.999")
                     return False
-                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:STAT ON")
-                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:INP:MAGN {dc_ratio:.5f}")
+                # Setting the DCYCle value auto-enables STATe per the programming guide.
+                # Explicit STATe ON follows to cover the SPEed=200 edge case where auto-enable
+                # is suppressed (error -221 Settings Conflict).
+                self.n1914a.write(f"SENS{ch}:CORR:DCYC {duty_cycle_pct:.3f}PCT")
+                self.n1914a.write(f"SENS{ch}:CORR:DCYC:STAT ON")
                 self.hw_duty_cycle_enabled[channel] = True
-                print(f"Duty cycle correction enabled on channel {channel}: {duty_cycle_pct:.2f}%")
+                print(f"Duty cycle correction enabled on channel {channel}: {duty_cycle_pct:.3f}%")
             else:
-                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:STAT OFF")
+                self.n1914a.write(f"SENS{ch}:CORR:DCYC:STAT OFF")
                 self.hw_duty_cycle_enabled[channel] = False
                 print(f"Duty cycle correction disabled on channel {channel}")
             return True
@@ -442,6 +464,34 @@ class PowerMonitor:
             print(f"setup_pulse_measurement_mode ch{channel}: {e}")
             self.hw_duty_cycle_enabled[channel] = False
             return False
+
+    def query_pulse_measurement_mode(self, channel: int) -> dict:
+        """Query actual duty cycle correction state from the hardware.
+
+        Issues SCPI queries to read back what the instrument actually has set,
+        which may differ from what was written if an error occurred (e.g. -221
+        Settings Conflict when SPEed is 200).  Drains SYST:ERR? after the queries.
+
+        Returns dict with keys: state (bool), duty_cycle_pct (float).
+        Returns None if the device is not connected or the query fails.
+        """
+        if not self.n1914a or not self.device_connected:
+            return None
+        try:
+            ch = str(channel)
+            state_str = self.n1914a.query(f"SENS{ch}:CORR:DCYC:STAT?").strip()
+            pct_str   = self.n1914a.query(f"SENS{ch}:CORR:DCYC?").strip()
+            # Drain instrument error queue to detect any latent errors.
+            err = self.n1914a.query("SYST:ERR?").strip()
+            if not (err.startswith("+0") or err.startswith("0,")):
+                print(f"query_pulse_measurement_mode ch{channel}: instrument error: {err}")
+            return {
+                "state": bool(int(state_str)),
+                "duty_cycle_pct": float(pct_str)
+            }
+        except Exception as e:
+            print(f"query_pulse_measurement_mode ch{channel}: {e}")
+            return None
 
     def connect_to_device(self) -> bool:
         # Use connection string from config
@@ -865,7 +915,7 @@ class PowerMonitor:
                         text="Enable hardware duty cycle correction on N1914A",
                         variable=dc_enable_var).pack(anchor=tk.W)
         ttk.Label(dc_enable_frame,
-                  text="When checked, SENSe:CORRection:GAIN2 is written to the meter so that\n"
+                  text="When checked, SENSe:CORRection:DCYCle is written to the meter so that\n"
                        "FETCh? returns peak-equivalent (ON-time) power directly.",
                   font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
 
