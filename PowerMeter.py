@@ -50,6 +50,11 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "port": 5000,
         "host": "0.0.0.0"
+    },
+    "pulse": {
+        "duty_cycle_enabled": False,
+        "repetition_rate_hz": 250,
+        "pulse_width_ms": 0.6
     }
 }
 
@@ -106,6 +111,9 @@ class PowerMonitor:
         self.n1914a = None
         self.rm = None
         self.monitoring = False
+        # Track whether hardware duty cycle correction is active per channel.
+        # When True, FETCh? already returns corrected peak power; skip software division.
+        self.hw_duty_cycle_enabled = {1: False, 2: False}
         
         # API Server state
         self.api_server = None
@@ -250,6 +258,57 @@ class PowerMonitor:
                     'message': f'Failed to list devices: {str(e)}'
                 }), 500
 
+        @self.api_server.route('/api/configure_pulse', methods=['GET', 'POST'])
+        def configure_pulse():
+            if request.method == 'GET':
+                pulse_cfg = self.config.get("pulse", {})
+                return jsonify({
+                    'duty_cycle_enabled': pulse_cfg.get("duty_cycle_enabled", False),
+                    'duty_cycle_pct': pulse_cfg.get("duty_cycle_pct", 15.0),
+                    'repetition_rate_hz': pulse_cfg.get("repetition_rate_hz", 250),
+                    'pulse_width_ms': pulse_cfg.get("pulse_width_ms", 0.6),
+                    'hw_correction_active': {
+                        str(ch): self.hw_duty_cycle_enabled.get(ch, False)
+                        for ch in [1, 2]
+                    }
+                })
+
+            data = request.get_json() or {}
+            enabled = bool(data.get('enabled', True))
+            channels = data.get('channels', [1, 2])
+
+            # Accept either a pre-computed duty_cycle_pct or pps+pulse_width_ms (TheraVision params).
+            # pps * pulse_width_ms / 1000 * 100 = duty_cycle_pct
+            if 'duty_cycle_pct' in data:
+                duty_cycle_pct = float(data['duty_cycle_pct'])
+            else:
+                pps    = float(data.get('repetition_rate_hz', self.config.get("pulse", {}).get("repetition_rate_hz", 250)))
+                pw_ms  = float(data.get('pulse_width_ms',     self.config.get("pulse", {}).get("pulse_width_ms", 0.6)))
+                duty_cycle_pct = pps * pw_ms / 1000.0 * 100.0
+                # Persist so GUI and reconnect logic stay in sync.
+                self.config.setdefault("pulse", {})["repetition_rate_hz"] = pps
+                self.config["pulse"]["pulse_width_ms"] = pw_ms
+
+            if not (0.1 <= duty_cycle_pct <= 100.0):
+                return jsonify({'success': False,
+                                'message': 'duty_cycle_pct must be 0.1-100'}), 400
+
+            results = {}
+            for ch in channels:
+                ok = self.setup_pulse_measurement_mode(int(ch), enabled, duty_cycle_pct)
+                results[str(ch)] = ok
+
+            self.config.setdefault("pulse", {})["duty_cycle_enabled"] = enabled
+            save_config(self.config)
+
+            return jsonify({
+                'success': True,
+                'enabled': enabled,
+                'duty_cycle_pct': duty_cycle_pct,
+                'channels': results,
+                'simulation': self.simulation_mode
+            })
+
         @self.api_server.route('/api/peak', methods=['GET'])
         def get_peak_power():
             duty_cycle_pct = request.args.get('duty_cycle_pct', type=float, default=15.0)
@@ -330,7 +389,7 @@ class PowerMonitor:
         """Initialize continuous measurement mode for both channels"""
         if not self.n1914a or not self.device_connected:
             return
-        
+
         try:
             # Set continuous measurement mode for both channels (only once during initialization)
             self.n1914a.write(":INITiate1:CONTinuous ON")
@@ -338,6 +397,51 @@ class PowerMonitor:
             print("Continuous measurement mode initialized for both channels")
         except Exception as e:
             print(f"Error initializing continuous measurement: {e}")
+
+        # Re-apply saved duty cycle correction settings so they survive reconnects.
+        pulse_cfg = self.config.get("pulse", {})
+        if pulse_cfg.get("duty_cycle_enabled", False):
+            pps = float(pulse_cfg.get("repetition_rate_hz", 250))
+            pw_ms = float(pulse_cfg.get("pulse_width_ms", 0.6))
+            dc_pct = pps * pw_ms / 1000.0 * 100.0
+            for ch in [1, 2]:
+                self.setup_pulse_measurement_mode(ch, True, dc_pct)
+
+    def setup_pulse_measurement_mode(self, channel: int, enabled: bool,
+                                     duty_cycle_pct: float = 15.0) -> bool:
+        """Configure hardware duty cycle correction on the N1914A.
+
+        When enabled, the instrument applies the correction internally so that
+        FETCh? returns the peak-equivalent (ON-time) power directly.  The
+        duty cycle must match the actual pulse parameters of the RF signal.
+
+        SCPI:
+          SENSe{ch}:CORRection:GAIN2:STATe ON|OFF
+          SENSe{ch}:CORRection:GAIN2:INPut:MAGNitude <ratio>  (0.001-1.000)
+        """
+        if not self.n1914a or not self.device_connected:
+            self.hw_duty_cycle_enabled[channel] = False
+            return False
+        try:
+            ch = str(channel)
+            if enabled:
+                dc_ratio = duty_cycle_pct / 100.0
+                if not (0.001 <= dc_ratio <= 1.0):
+                    print(f"setup_pulse_measurement_mode: duty cycle {duty_cycle_pct}% out of range 0.1-100")
+                    return False
+                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:STAT ON")
+                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:INP:MAGN {dc_ratio:.5f}")
+                self.hw_duty_cycle_enabled[channel] = True
+                print(f"Duty cycle correction enabled on channel {channel}: {duty_cycle_pct:.2f}%")
+            else:
+                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:STAT OFF")
+                self.hw_duty_cycle_enabled[channel] = False
+                print(f"Duty cycle correction disabled on channel {channel}")
+            return True
+        except Exception as e:
+            print(f"setup_pulse_measurement_mode ch{channel}: {e}")
+            self.hw_duty_cycle_enabled[channel] = False
+            return False
 
     def connect_to_device(self) -> bool:
         # Use connection string from config
@@ -749,6 +853,90 @@ class PowerMonitor:
         integration_entry.pack(anchor=tk.W, pady=(0, 5))
         ttk.Label(integration_frame, text="Range: 0.001 to 1.0", font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
         
+        # Pulse / Duty Cycle Correction Section
+        pulse_cfg = self.config.get("pulse", {})
+        dc_frame = ttk.LabelFrame(scrollable_frame, text="Pulse / Duty Cycle Correction", padding=10)
+        dc_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        dc_enable_frame = ttk.Frame(dc_frame)
+        dc_enable_frame.pack(fill=tk.X, pady=5)
+        dc_enable_var = tk.BooleanVar(value=pulse_cfg.get("duty_cycle_enabled", False))
+        ttk.Checkbutton(dc_enable_frame,
+                        text="Enable hardware duty cycle correction on N1914A",
+                        variable=dc_enable_var).pack(anchor=tk.W)
+        ttk.Label(dc_enable_frame,
+                  text="When checked, SENSe:CORRection:GAIN2 is written to the meter so that\n"
+                       "FETCh? returns peak-equivalent (ON-time) power directly.",
+                  font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
+
+        # Primary parameters: pps and pulse width (same values as configured in TheraVision).
+        # Duty cycle percentage is derived: duty_cycle_pct = pps * pulse_width_ms / 1000 * 100
+        pps_frame = ttk.Frame(dc_frame)
+        pps_frame.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(pps_frame, text="Pulse Repetition Rate (pps):",
+                  font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
+        pps_var = tk.StringVar(value=str(int(pulse_cfg.get("repetition_rate_hz", 250))))
+        pps_entry = ttk.Entry(pps_frame, textvariable=pps_var, width=12)
+        pps_entry.pack(anchor=tk.W, pady=(0, 2))
+
+        pw_frame = ttk.Frame(dc_frame)
+        pw_frame.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(pw_frame, text="Pulse Width (ms):",
+                  font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
+        pw_var = tk.StringVar(value=str(float(pulse_cfg.get("pulse_width_ms", 0.6))))
+        pw_entry = ttk.Entry(pw_frame, textvariable=pw_var, width=12)
+        pw_entry.pack(anchor=tk.W, pady=(0, 2))
+
+        dc_computed_var = tk.StringVar(value="")
+        dc_computed_label = ttk.Label(dc_frame, textvariable=dc_computed_var,
+                                      font=('Helvetica', 9), foreground='#2c7be5')
+        dc_computed_label.pack(anchor=tk.W, pady=(2, 0))
+
+        def update_dc_display(*_):
+            try:
+                pps = float(pps_var.get())
+                pw  = float(pw_var.get())
+                pct = pps * pw / 1000.0 * 100.0
+                dc_computed_var.set(f"Computed duty cycle: {pct:.2f}%  ({pps:.0f} pps x {pw} ms)")
+            except ValueError:
+                dc_computed_var.set("Enter valid numbers for pps and pulse width")
+
+        pps_var.trace_add("write", update_dc_display)
+        pw_var.trace_add("write", update_dc_display)
+        update_dc_display()
+
+        dc_status_var = tk.StringVar(value="")
+        ttk.Label(dc_frame, textvariable=dc_status_var,
+                  font=('Helvetica', 9, 'bold')).pack(anchor=tk.W)
+
+        def apply_duty_cycle():
+            try:
+                enabled = dc_enable_var.get()
+                pps = float(pps_var.get())
+                pw  = float(pw_var.get())
+                pct = pps * pw / 1000.0 * 100.0
+                if not (0.1 <= pct <= 100.0):
+                    messagebox.showerror("Error",
+                        f"Computed duty cycle {pct:.2f}% is out of range 0.1%-100%.\n"
+                        "Check pps and pulse width values.")
+                    return
+                ok1 = self.setup_pulse_measurement_mode(1, enabled, pct)
+                ok2 = self.setup_pulse_measurement_mode(2, enabled, pct)
+                self.config.setdefault("pulse", {})["duty_cycle_enabled"] = enabled
+                self.config["pulse"]["repetition_rate_hz"] = pps
+                self.config["pulse"]["pulse_width_ms"] = pw
+                save_config(self.config)
+                state = "enabled" if enabled else "disabled"
+                if self.device_connected and (ok1 or ok2):
+                    dc_status_var.set(f"Hardware correction {state}: {pct:.2f}% on channels 1 and 2")
+                else:
+                    dc_status_var.set(f"Settings saved ({pct:.2f}%, {state}) -- applied on next connection")
+            except ValueError:
+                messagebox.showerror("Error", "Enter valid numbers for pps and pulse width")
+
+        ttk.Button(dc_frame, text="Apply Duty Cycle Settings",
+                   command=apply_duty_cycle).pack(anchor=tk.W, pady=(5, 0))
+
         # API Server Configuration Section
         api_frame = ttk.LabelFrame(scrollable_frame, text="API Server Configuration", padding=10)
         api_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -966,8 +1154,11 @@ class PowerMonitor:
             return None
         try:
             ch = str(channel)
-            avg_power = float(self.n1914a.query(f":FETCh{ch}:SCALar:POWer:AC?"))
-            return avg_power / (duty_cycle_pct / 100.0)
+            reading = float(self.n1914a.query(f":FETCh{ch}:SCALar:POWer:AC?"))
+            if self.hw_duty_cycle_enabled.get(channel, False):
+                # N1914A hardware correction already applied -- return reading directly.
+                return reading
+            return reading / (duty_cycle_pct / 100.0)
         except Exception as e:
             print(f"Error measuring peak pulse power: {e}")
             return None
