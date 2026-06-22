@@ -30,7 +30,7 @@ DEFAULT_CONFIG = {
         "connection_string": ""
     },
     "measurement": {
-        "frequency_Hz": 1.0e9,  # 1 GHz
+        "frequency_Hz": 50.0e6,  # 50 MHz
         "averaging": 1,
         "unit": "dBm",
         "trigger_mode": "AUTO",
@@ -38,6 +38,16 @@ DEFAULT_CONFIG = {
         "integration_time_s": 0.1,
         "channel_a": 1,
         "channel_b": 2
+    },
+    "channel_offset": {
+        # GAIN2 correction: compensates for a directional coupler, cable loss, or
+        # external attenuator between the DUT and the power sensor.  A +40 dB offset
+        # tells the meter to add 40 dB to every raw sensor reading so that the
+        # displayed value reflects the true power at the DUT output, not the
+        # attenuated power at the sensor port.
+        # SCPI: SENSe[1|2]:CORRection:GAIN2 <dB>  /  GAIN2:STATe ON|OFF
+        "enabled": True,
+        "offset_dB": 40.0
     },
     "display": {
         "update_frequency_Hz": 1.0,  # 1 Hz
@@ -419,6 +429,13 @@ class PowerMonitor:
             for ch in [1, 2]:
                 self.setup_pulse_measurement_mode(ch, True, dc_pct)
 
+        # Re-apply saved GAIN2 channel offset settings so they survive reconnects.
+        offset_cfg = self.config.get("channel_offset", {})
+        offset_enabled = offset_cfg.get("enabled", False)
+        offset_dB = float(offset_cfg.get("offset_dB", 40.0))
+        for ch in [1, 2]:
+            self.setup_channel_offset(ch, offset_enabled, offset_dB)
+
     def setup_pulse_measurement_mode(self, channel: int, enabled: bool,
                                      duty_cycle_pct: float = 15.0) -> bool:
         """Configure duty cycle (DCYCle/GAIN3) correction on the N1914A.
@@ -491,6 +508,61 @@ class PowerMonitor:
             }
         except Exception as e:
             print(f"query_pulse_measurement_mode ch{channel}: {e}")
+            return None
+
+    def setup_channel_offset(self, channel: int, enabled: bool,
+                             offset_dB: float = 40.0) -> bool:
+        """Configure the GAIN2 (cable-loss / coupler) offset on the N1914A.
+
+        GAIN2 is a fixed dB correction applied to every reading to compensate for
+        an external directional coupler, attenuator, or cable between the DUT and
+        the power sensor.  Positive values indicate loss (sensor reads low relative
+        to actual DUT power); the meter adds the value before displaying.
+
+        SCPI (N1913A/1914A Programming Guide):
+          SENSe{ch}:CORRection:GAIN2 <dB>       -- range -100 to +100 dB
+          SENSe{ch}:CORRection:GAIN2:STATe ON|OFF
+        """
+        if not self.n1914a or not self.device_connected:
+            return False
+        try:
+            ch = str(channel)
+            if enabled:
+                if not (-100.0 <= offset_dB <= 100.0):
+                    print(f"setup_channel_offset: offset {offset_dB} dB out of range -100..+100")
+                    return False
+                self.n1914a.write(f"SENS{ch}:CORR:GAIN2 {offset_dB:.4f}")
+                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:STAT ON")
+                print(f"Channel offset enabled on channel {channel}: {offset_dB:.4f} dB")
+            else:
+                self.n1914a.write(f"SENS{ch}:CORR:GAIN2:STAT OFF")
+                print(f"Channel offset disabled on channel {channel}")
+            return True
+        except Exception as e:
+            print(f"setup_channel_offset ch{channel}: {e}")
+            return False
+
+    def query_channel_offset(self, channel: int) -> dict:
+        """Query the GAIN2 offset state from the hardware.
+
+        Returns dict with keys: state (bool), offset_dB (float).
+        Returns None if device is not connected or the query fails.
+        """
+        if not self.n1914a or not self.device_connected:
+            return None
+        try:
+            ch = str(channel)
+            state_str = self.n1914a.query(f"SENS{ch}:CORR:GAIN2:STAT?").strip()
+            val_str   = self.n1914a.query(f"SENS{ch}:CORR:GAIN2?").strip()
+            err = self.n1914a.query("SYST:ERR?").strip()
+            if not (err.startswith("+0") or err.startswith("0,")):
+                print(f"query_channel_offset ch{channel}: instrument error: {err}")
+            return {
+                "state": bool(int(state_str)),
+                "offset_dB": float(val_str)
+            }
+        except Exception as e:
+            print(f"query_channel_offset ch{channel}: {e}")
             return None
 
     def connect_to_device(self) -> bool:
@@ -987,6 +1059,62 @@ class PowerMonitor:
         ttk.Button(dc_frame, text="Apply Duty Cycle Settings",
                    command=apply_duty_cycle).pack(anchor=tk.W, pady=(5, 0))
 
+        # Channel Offset (GAIN2) Section
+        offset_cfg = self.config.get("channel_offset", {})
+        offset_frame = ttk.LabelFrame(scrollable_frame, text="Channel Offset Correction (GAIN2)", padding=10)
+        offset_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        offset_enable_frame = ttk.Frame(offset_frame)
+        offset_enable_frame.pack(fill=tk.X, pady=5)
+        offset_enable_var = tk.BooleanVar(value=offset_cfg.get("enabled", True))
+        ttk.Checkbutton(offset_enable_frame,
+                        text="Enable GAIN2 offset correction on N1914A",
+                        variable=offset_enable_var).pack(anchor=tk.W)
+        ttk.Label(offset_enable_frame,
+                  text="Compensates for a directional coupler, cable loss, or external attenuator\n"
+                       "between the DUT and the power sensor.  A +40 dB offset corrects a\n"
+                       "40 dB directional coupler so the display shows true line power.\n"
+                       "SCPI: SENSe[1|2]:CORRection:GAIN2 <dB> / GAIN2:STATe ON|OFF",
+                  font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
+
+        offset_val_frame = ttk.Frame(offset_frame)
+        offset_val_frame.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(offset_val_frame, text="Offset (dB):",
+                  font=('Helvetica', 10, 'bold')).pack(anchor=tk.W)
+        offset_dB_var = tk.StringVar(value=str(float(offset_cfg.get("offset_dB", 40.0))))
+        offset_dB_entry = ttk.Entry(offset_val_frame, textvariable=offset_dB_var, width=12)
+        offset_dB_entry.pack(anchor=tk.W, pady=(0, 2))
+        ttk.Label(offset_val_frame, text="Range: -100 to +100 dB",
+                  font=('Helvetica', 8), foreground='gray').pack(anchor=tk.W)
+
+        offset_status_var = tk.StringVar(value="")
+        ttk.Label(offset_frame, textvariable=offset_status_var,
+                  font=('Helvetica', 9, 'bold')).pack(anchor=tk.W)
+
+        def apply_channel_offset():
+            try:
+                enabled = offset_enable_var.get()
+                val = float(offset_dB_var.get())
+                if not (-100.0 <= val <= 100.0):
+                    messagebox.showerror("Error",
+                        f"Offset {val} dB is out of range -100 to +100 dB.")
+                    return
+                ok1 = self.setup_channel_offset(1, enabled, val)
+                ok2 = self.setup_channel_offset(2, enabled, val)
+                self.config.setdefault("channel_offset", {})["enabled"] = enabled
+                self.config["channel_offset"]["offset_dB"] = val
+                save_config(self.config)
+                state = "enabled" if enabled else "disabled"
+                if self.device_connected and (ok1 or ok2):
+                    offset_status_var.set(f"GAIN2 correction {state}: {val:.1f} dB on channels 1 and 2")
+                else:
+                    offset_status_var.set(f"Settings saved ({val:.1f} dB, {state}) -- applied on next connection")
+            except ValueError:
+                messagebox.showerror("Error", "Enter a valid number for offset dB")
+
+        ttk.Button(offset_frame, text="Apply Offset Settings",
+                   command=apply_channel_offset).pack(anchor=tk.W, pady=(5, 0))
+
         # API Server Configuration Section
         api_frame = ttk.LabelFrame(scrollable_frame, text="API Server Configuration", padding=10)
         api_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -1058,7 +1186,14 @@ class PowerMonitor:
                 
                 # Set frequency
                 self.n1914a.write(f"SENS:FREQ {freq}")
-                
+
+                # Apply GAIN2 channel offset correction
+                offset_cfg = self.config.get("channel_offset", {})
+                offset_enabled = offset_cfg.get("enabled", True)
+                offset_dB = float(offset_cfg.get("offset_dB", 40.0))
+                for ch in [1, 2]:
+                    self.setup_channel_offset(ch, offset_enabled, offset_dB)
+
                 # Configure Channel 1 (Forward Power) - using correct SCPI commands from programming guide
                 self.n1914a.write(f"SENS1:AVER:COUN {avg_count}")
                 self.n1914a.write(f"SENS1:UNIT:POW {unit}")
