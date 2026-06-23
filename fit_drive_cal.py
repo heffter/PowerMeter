@@ -9,14 +9,26 @@ directly to the RFG ASCII serial port.
 A PDF calibration report is written automatically next to the input CSV
 (suppress with --no-report).
 
-Input CSV columns (one header row required):
-    freq_field,power_setpoint_w,keysight_w,drive_sum
+Input CSV formats (auto-detected from header row):
 
-    freq_field        rf_frequency_khz XML field value (100 Hz units)
-                      field 5000 = 500 kHz = 0.5 MHz
-    power_setpoint_w  requested power (W); used for labelling only
-    keysight_w        actual power measured by Keysight N1914A (W)
-    drive_sum         value reported by CALIBRATE DRIVESUM command
+    Native format:
+        freq_field,power_setpoint_w,keysight_w,drive_sum
+
+        freq_field        rf_frequency_khz XML field value (100 Hz units);
+                          field 5000 = 500 kHz = 0.5 MHz
+        power_setpoint_w  requested power (W); used for labelling only
+        keysight_w        actual power measured by Keysight N1914A (W)
+        drive_sum         value reported by CALIBRATE DRIVESUM command
+
+    Remote_Control format (auto-detected when header contains 'Frequency' and 'Drive-Sum'):
+        Channel,Frequency,PWR-Control-Level,AMS-FWD-PWR,Bird-FWD-PWR,...,Drive-Sum
+
+        Channel           RFG channel (1 or 2); use --channel to filter
+        Frequency         RF frequency in kHz (e.g. 500 for 500 kHz)
+        Bird-FWD-PWR      Keysight N1914A ch1 forward power reading (W) -- Keysight
+                          readings flow into the Bird reference columns via R3 mapping;
+                          if a 'Keysight - FWD - PWR' column is present it is preferred
+        Drive-Sum         value reported by CALIBRATE DRIVESUM command
 
 Polynomial fitted:
     volt = a + b*f + c*sqrt(P) + d*f^2 + e*f*sqrt(P)
@@ -98,16 +110,56 @@ def parse_args():
     return p.parse_args()
 
 
-def load_csv(path, min_power):
+def _detect_csv_format(headers):
+    """Return (freq_col, power_col, drive_col, freq_scale, channel_col, fmt_name)."""
+    if "freq_field" in headers:
+        # Native format: field value in 100 Hz units -> MHz = field / 10000
+        return ("freq_field", "keysight_w", "drive_sum", 1.0 / 10000.0, None, "native")
+
+    if "Frequency" in headers and "Drive-Sum" in headers:
+        # Remote_Control CSV (kHz -> MHz = kHz / 1000).
+        # Prefer the explicit Keysight column when present (pre-R3 builds that write
+        # both); otherwise fall back to Bird-FWD-PWR which is where R3 maps Keysight
+        # ch1.
+        power_col = (
+            "Keysight - FWD - PWR" if "Keysight - FWD - PWR" in headers
+            else "Bird-FWD-PWR"
+        )
+        channel_col = "Channel" if "Channel" in headers else None
+        return ("Frequency", power_col, "Drive-Sum", 1.0 / 1000.0, channel_col, "Remote_Control")
+
+    print(
+        "ERROR: unrecognised CSV format.\n"
+        f"  Headers found: {headers}\n"
+        "  Expected 'freq_field' (native) or 'Frequency'+'Drive-Sum' (Remote_Control).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def load_csv(path, min_power, channel_filter=None):
     rows = []
     skipped = 0
     with open(path, newline="") as f:
         reader = csv.DictReader(f)
+        headers = list(reader.fieldnames or [])
+        freq_col, power_col, drive_col, freq_scale, channel_col, fmt = \
+            _detect_csv_format(headers)
+
+        print(f"CSV format: {fmt}  (power column: '{power_col}')")
+        if channel_col and channel_filter is not None:
+            print(f"Filtering to channel {channel_filter}")
+
         for lineno, row in enumerate(reader, start=2):
             try:
-                freq_field = float(row["freq_field"])
-                keysight_w = float(row["keysight_w"])
-                drive_sum = float(row["drive_sum"])
+                if channel_col and channel_filter is not None:
+                    if row.get(channel_col, "").strip() != str(channel_filter):
+                        skipped += 1
+                        continue
+
+                freq_raw   = float(row[freq_col])
+                keysight_w = float(row[power_col])
+                drive_sum  = float(row[drive_col])
             except (KeyError, ValueError) as exc:
                 print(f"  [line {lineno}] skipped: {exc}", file=sys.stderr)
                 skipped += 1
@@ -120,7 +172,7 @@ def load_csv(path, min_power):
                 skipped += 1
                 continue
 
-            freq_mhz = freq_field / 10000.0
+            freq_mhz = freq_raw * freq_scale
             volt = math.sqrt(drive_sum) * DRIVE_VOLT_SCALE
             rows.append((freq_mhz, keysight_w, volt))
 
@@ -582,7 +634,7 @@ def plot_results(coeffs, residuals, rows):
 def main():
     args = parse_args()
 
-    rows = load_csv(args.csv_file, args.min_power)
+    rows = load_csv(args.csv_file, args.min_power, channel_filter=args.channel)
     if len(rows) < 6:
         print(f"ERROR: {len(rows)} usable rows -- need at least 6 to fit 5 coefficients.")
         sys.exit(1)
