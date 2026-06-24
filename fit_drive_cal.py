@@ -233,7 +233,11 @@ def print_report(coeffs, residuals, rows):
 def build_commands(coeffs, channels):
     a, b, c, d, e = coeffs
     coeff_str = f"{a:.8f} {b:.8f} {c:.8f} {d:.8f} {e:.8f}"
-    cmds = [f"CALIBRATE {ch} POWER {coeff_str}" for ch in channels]
+    cmds = [
+        "CALIBRATE READ",       # reload flash -> RAM so FORWARD/REFLECTED constants are preserved
+        "CALIBRATE TABLE 0",
+    ]
+    cmds += [f"CALIBRATE {ch} POWER {coeff_str}" for ch in channels]
     cmds.append("CALIBRATE WRITE")
     return cmds
 
@@ -324,8 +328,7 @@ def generate_report(csv_path, min_power, rows, coeffs, residuals, channels):
 
     freq_stats = _per_freq_stats(rows, res)
     coeff_str = f"{a:.8f} {b:.8f} {c:.8f} {d:.8f} {e:.8f}"
-    cmd_lines = [f"CALIBRATE {ch} POWER {coeff_str}" for ch in channels]
-    cmd_lines.append("CALIBRATE WRITE")
+    cmd_lines = build_commands(coeffs, channels)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
 
     # Scalar mappable for shared colorbars (frequency axis)
