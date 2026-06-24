@@ -88,6 +88,12 @@ MAX_CALIBRATION_TABLES = 16
 
 CMD_DELAY_S         = 0.7   # seconds between packets (matches Remote_Terminal 700 ms)
 
+# Convergence quality gate applied per-frequency before fitting.
+# A row passes when ams_fwd >= CONVERGENCE_THRESHOLD * pwr_setpoint.
+# A frequency slot is included only when MIN_CONVERGED_ROWS rows pass.
+CONVERGENCE_THRESHOLD = 0.80
+MIN_CONVERGED_ROWS    = 4
+
 # ---------------------------------------------------------------------------
 # File discovery
 # ---------------------------------------------------------------------------
@@ -154,6 +160,33 @@ def load_log(path):
 
 
 # ---------------------------------------------------------------------------
+# Convergence quality gate
+# ---------------------------------------------------------------------------
+
+def valid_frequencies(fwd_rows, threshold=CONVERGENCE_THRESHOLD, min_rows=MIN_CONVERGED_ROWS):
+    """
+    Return (valid_set, excluded_dict) from forward-relay rows.
+
+    A row converges when ams_fwd >= threshold * pwr_setpoint.
+    A frequency is included when it has >= min_rows converging rows.
+    excluded_dict maps freq_khz -> (converged_count, total_count).
+    """
+    counts = {}
+    for row in fwd_rows:
+        f = row['freq_khz']
+        if f not in counts:
+            counts[f] = [0, 0]
+        sp = row['pwr_setpoint']
+        counts[f][0] += 1
+        if sp <= 0 or row['ams_fwd'] >= threshold * sp:
+            counts[f][1] += 1
+
+    valid    = {f for f, (tot, conv) in counts.items() if conv >= min_rows}
+    excluded = {f: (conv, tot) for f, (tot, conv) in counts.items() if conv < min_rows}
+    return valid, excluded
+
+
+# ---------------------------------------------------------------------------
 # Polynomial fitting
 # ---------------------------------------------------------------------------
 
@@ -204,13 +237,15 @@ def fit_drive_poly(rows, min_power=1.0):
 # Frequency table structure
 # ---------------------------------------------------------------------------
 
-def build_tables(fwd0_rows, ref0_rows, fwd1_rows, ref1_rows):
+def build_tables(fwd0_rows, ref0_rows, fwd1_rows, ref1_rows, valid_freqs=None):
     """
     Group measurements by frequency and fit per-slot polynomials.
+    Frequencies absent from valid_freqs (when supplied) are skipped.
     Returns list of table dicts sorted ascending by frequency.
     """
     all_rows = fwd0_rows + ref0_rows + fwd1_rows + ref1_rows
-    freqs = sorted(set(r['freq_khz'] for r in all_rows))
+    all_freqs = sorted(set(r['freq_khz'] for r in all_rows))
+    freqs = [f for f in all_freqs if valid_freqs is None or f in valid_freqs]
     if not freqs:
         return []
 
@@ -443,7 +478,13 @@ def process_rfg(rfg_idx, directory, port, out_dir, delay):
     fwd1 = load(1, 'F')
     ref1 = load(1, 'R')
 
-    tables = build_tables(fwd0, ref0, fwd1, ref1)
+    valid_freqs, excluded = valid_frequencies(fwd0 + fwd1)
+    for freq, (conv, tot) in sorted(excluded.items()):
+        print(f'  SKIP {freq} kHz: only {conv}/{tot} setpoints converged '
+              f'(need {MIN_CONVERGED_ROWS}, threshold {CONVERGENCE_THRESHOLD*100:.0f}%) '
+              f'-- amplifier limit?')
+
+    tables = build_tables(fwd0, ref0, fwd1, ref1, valid_freqs=valid_freqs)
     if not tables:
         print(f'  ERROR: no frequency data found for RFG{rfg_idx}, skipping.')
         return
