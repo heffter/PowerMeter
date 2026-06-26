@@ -290,7 +290,10 @@ def build_tables(fwd0_rows, ref0_rows, fwd1_rows, ref1_rows, valid_freqs=None):
 # ---------------------------------------------------------------------------
 
 def _coeff_str(a, b, c, d, e):
-    return f'{a:.8f} {b:.8f} {c:.8f} {d:.8f} {e:.8f}'
+    # Use %.9g: IEEE-754 float32 needs 9 significant digits for exact round-trip.
+    # %.8f gave only ~5 sig-figs on small coefficients (e.g. 0.00038667 -> ~2.6% error).
+    # atof() on the RFG firmware parses scientific notation (e.g. 3.86670e-04) correctly.
+    return f'{a:.9g} {b:.9g} {c:.9g} {d:.9g} {e:.9g}'
 
 
 def build_commands(tables, drive_ch0, drive_ch1):
