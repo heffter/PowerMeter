@@ -236,7 +236,9 @@ def fit_drive_poly(rows, min_power=1.0):
         if row['drive_sum'] <= 0.0 or row['bird_fwd'] < min_power:
             continue
         sp = row['pwr_setpoint']
-        if sp > 0 and row['ams_fwd'] < CONVERGENCE_THRESHOLD * sp:
+        # Treat zero setpoint as unconverged: pre-ramp captures have no settled
+        # Drive-Sum, and sp==0 would bypass the threshold check silently.
+        if sp <= 0 or row['ams_fwd'] < CONVERGENCE_THRESHOLD * sp:
             skipped_conv += 1
             continue
         f    = row['freq_khz'] / 1000.0
@@ -253,26 +255,25 @@ def fit_drive_poly(rows, min_power=1.0):
         return None
 
     def _solve(pts_in):
+        """Return (coeffs, A, y) so the caller can compute residuals as abs(A @ coeffs - y)."""
         A = np.array([[1.0, f, math.sqrt(p), f * f, f * math.sqrt(p)]
                       for f, p, _ in pts_in])
         y = np.array([v for _, _, v in pts_in])
         coeffs, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
-        return coeffs
+        return coeffs, A, y
 
     active = pts
+    coeffs = None
     for _iteration in range(5):
-        coeffs = _solve(active)
-        residuals = np.array([
-            abs(coeffs[0] + coeffs[1]*f + coeffs[2]*math.sqrt(p) +
-                coeffs[3]*f*f + coeffs[4]*f*math.sqrt(p) - v)
-            for f, p, v in active
-        ])
+        coeffs, A, y = _solve(active)
+        residuals = np.abs(A @ coeffs - y)
         median_abs = float(np.median(residuals))
         sigma = 1.4826 * median_abs
         if sigma == 0.0:
             break
         threshold = 3.0 * sigma
-        kept = [pt for pt, r in zip(active, residuals) if r <= threshold]
+        mask = residuals <= threshold
+        kept = [pt for pt, ok in zip(active, mask) if ok]
         if len(kept) == len(active):
             break
         n_dropped = len(active) - len(kept)
@@ -284,7 +285,8 @@ def fit_drive_poly(rows, min_power=1.0):
               f'(threshold {threshold:.4f} V)')
         active = kept
 
-    coeffs = _solve(active)
+    if coeffs is None:
+        coeffs, _, _ = _solve(active)
     return tuple(float(c) for c in coeffs)
 
 
