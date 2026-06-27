@@ -215,21 +215,76 @@ def fit_drive_poly(rows, min_power=1.0):
     """
     Fit bivariate drive polynomial from forward-relay measurements.
     Model: volt = a + b*f + c*sqrt(P) + d*f^2 + e*f*sqrt(P)
-    Returns (a, b, c, d, e) or None when data is insufficient.
+
+    Two quality filters are applied before the least-squares solve:
+    1. Convergence gate: rows where ams_fwd < CONVERGENCE_THRESHOLD * pwr_setpoint
+       are discarded -- Drive-Sum at those rows is a pre-convergence fallback value,
+       not a settled PID snapshot.
+    2. Iterative 3-sigma residual-outlier rejection (sigma estimated via MAD): fits,
+       drops outliers beyond 3 * 1.4826 * MAD, re-fits; stops when stable or after
+       5 passes.
+
+    If either filter would leave fewer than 6 points the pre-filter set is kept and
+    a warning is printed, preserving the existing safe path (return None on insufficient
+    data).  Returns (a, b, c, d, e) or None when data is insufficient.
     """
+    MIN_POINTS = 6
+
+    skipped_conv = 0
     pts = []
     for row in rows:
         if row['drive_sum'] <= 0.0 or row['bird_fwd'] < min_power:
+            continue
+        sp = row['pwr_setpoint']
+        if sp > 0 and row['ams_fwd'] < CONVERGENCE_THRESHOLD * sp:
+            skipped_conv += 1
             continue
         f    = row['freq_khz'] / 1000.0
         p    = row['bird_fwd']
         volt = math.sqrt(row['drive_sum']) * DRIVE_VOLT_SCALE
         pts.append((f, p, volt))
-    if len(pts) < 6:
+
+    if skipped_conv:
+        print(f'  drive fit: {skipped_conv} row(s) skipped (PID not converged at capture)')
+
+    if len(pts) < MIN_POINTS:
+        print(f'  drive fit: only {len(pts)} usable point(s) after convergence filter '
+              f'(need {MIN_POINTS}) -- skipping drive polynomial')
         return None
-    A = np.array([[1.0, f, math.sqrt(p), f * f, f * math.sqrt(p)] for f, p, _ in pts])
-    y = np.array([v for _, _, v in pts])
-    coeffs, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
+
+    def _solve(pts_in):
+        A = np.array([[1.0, f, math.sqrt(p), f * f, f * math.sqrt(p)]
+                      for f, p, _ in pts_in])
+        y = np.array([v for _, _, v in pts_in])
+        coeffs, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
+        return coeffs
+
+    active = pts
+    for _iteration in range(5):
+        coeffs = _solve(active)
+        residuals = np.array([
+            abs(coeffs[0] + coeffs[1]*f + coeffs[2]*math.sqrt(p) +
+                coeffs[3]*f*f + coeffs[4]*f*math.sqrt(p) - v)
+            for f, p, v in active
+        ])
+        median_abs = float(np.median(residuals))
+        sigma = 1.4826 * median_abs
+        if sigma == 0.0:
+            break
+        threshold = 3.0 * sigma
+        kept = [pt for pt, r in zip(active, residuals) if r <= threshold]
+        if len(kept) == len(active):
+            break
+        n_dropped = len(active) - len(kept)
+        if len(kept) < MIN_POINTS:
+            print(f'  drive fit: outlier pass would leave {len(kept)} points '
+                  f'(threshold {threshold:.4f} V); keeping {len(active)} to preserve minimum')
+            break
+        print(f'  drive fit: outlier pass dropped {n_dropped} point(s) '
+              f'(threshold {threshold:.4f} V)')
+        active = kept
+
+    coeffs = _solve(active)
     return tuple(float(c) for c in coeffs)
 
 
